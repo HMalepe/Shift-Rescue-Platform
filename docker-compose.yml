@@ -1,0 +1,56 @@
+# Local development parity stack.
+#
+# §0.1 is explicit that environment parity matters where behaviour differs:
+# row-level locking and query-planner behaviour do not port from SQLite or a
+# different Postgres major. These image tags are therefore PINNED, and must be
+# changed in lockstep with the RDS engine version in infra/ — never drifted.
+#
+#   Postgres 16 + PostGIS 3.4  (matches RDS af-south-1 target)
+#   Redis 7.4                  (BullMQ queues + rate limiting)
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: locum-postgres
+    environment:
+      POSTGRES_USER: locum
+      POSTGRES_PASSWORD: locum_local_dev
+      POSTGRES_DB: locum_planner_dev
+      # Deterministic collation: sort order affects index behaviour and must
+      # not vary with the host locale.
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U locum -d locum_planner_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      # Surface slow queries locally so PostGIS regressions are noticed during
+      # development rather than at the §12.3 load-testing gate.
+      - "postgres"
+      - "-c"
+      - "log_min_duration_statement=200"
+      - "-c"
+      - "shared_preload_libraries=pg_stat_statements"
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: locum-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command: ["redis-server", "--appendonly", "yes"]
+
+volumes:
+  postgres-data:
+  redis-data:

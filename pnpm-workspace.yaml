@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "tools/*"
+
+# pnpm 10 blocks lifecycle scripts by default. esbuild needs its postinstall to
+# place a prebuilt binary; drizzle-kit and vitest both depend on it. Allowlisted
+# by name rather than disabling the protection wholesale.
+onlyBuiltDependencies:
+  - esbuild
