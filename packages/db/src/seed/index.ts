@@ -105,13 +105,32 @@ export async function seed(db: Database, options: SeedOptions = {}) {
   // statement and cannot leave orphans behind if the table list drifts.
   // ---------------------------------------------------------------------
   log("clearing existing data...");
+  /*
+   * `verification_runs` is deliberately NOT in this list.
+   *
+   * It is not fixture data — it is the §12.5 gate ledger, the durable record of
+   * which gates passed and with what evidence. Truncating it on every seed
+   * would reproduce exactly the failure §12.5 exists to prevent ("gate status
+   * recorded only in a document drifts from reality within days"), except
+   * faster and more silently: refreshing fixtures would destroy the audit
+   * trail of every gate the team has closed. It survives because it holds no
+   * foreign key into any table below, so CASCADE cannot reach it.
+   *
+   * `audit_log` IS cleared, and is listed explicitly rather than left to
+   * happen via CASCADE. It references users, so truncating users would take it
+   * regardless — naming it here means that is visible when reading the seed
+   * instead of being a surprise in the NOTICE output. Acceptable because this
+   * script refuses to run against production (see seed/run.ts); if audit
+   * retention is ever needed on a shared staging box, users must be removed
+   * with DELETE so the ON DELETE SET NULL on actor_id is honoured.
+   */
   await db.execute(sql`
     TRUNCATE TABLE
       cancellation_fees, subscription_charges, subscriptions,
       ratings, messages, check_ins, bookings, shifts,
       favourite_locums, documents, locum_profiles,
       pharmacy_members, pharmacies, audit_log,
-      whatsapp_message_log, idempotency_keys, verification_runs, users
+      whatsapp_message_log, idempotency_keys, users
     RESTART IDENTITY CASCADE
   `);
 
