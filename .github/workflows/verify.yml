@@ -1,0 +1,90 @@
+# §0.4 — the single-command verification run, in CI.
+#
+# The gate tests contend on real Postgres row locks, so this workflow runs a
+# genuine Postgres 16 + PostGIS 3.4 service rather than a stub. §0.1 is explicit
+# that row-level locking and query-planner behaviour do not port between
+# engines, which makes a mocked database worthless for exactly the checks that
+# matter most here.
+
+name: verify
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # Pinned in lockstep with docker-compose.yml and the RDS engine version.
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: locum
+          POSTGRES_PASSWORD: locum_local_dev
+          POSTGRES_DB: locum_planner_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U locum -d locum_planner_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://locum:locum_local_dev@localhost:5432/locum_planner_test
+      REDIS_URL: redis://localhost:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Apply migrations
+        run: pnpm --filter @locum/db migrate
+
+      - name: Confirm PostGIS is present and the expected version
+        # A silently-missing extension would turn every geospatial gate into a
+        # false pass, so this fails loudly rather than letting the suite skip.
+        run: |
+          psql "$DATABASE_URL" -tAc "SELECT postgis_version()"
+          psql "$DATABASE_URL" -tAc "SELECT postgis_version()" | grep -q '^3\.4' \
+            || { echo "::error::PostGIS 3.4 expected"; exit 1; }
+
+      - name: Seed fixtures (§14)
+        # Smaller than the local default to keep CI quick; the full-scale run
+        # belongs to the §12.3 load-testing gate, not to every push.
+        env:
+          SEED_LOCUMS: "2000"
+          SEED_PHARMACIES: "100"
+        run: pnpm --filter @locum/db seed
+
+      - name: Verify (§0.4)
+        run: make verify

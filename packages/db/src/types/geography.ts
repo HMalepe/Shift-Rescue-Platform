@@ -70,6 +70,32 @@ export function parseEwkbPoint(hex: string): LngLat {
 }
 
 /**
+ * Rejects coordinates Postgres would otherwise accept and quietly normalise.
+ *
+ * A longitude of 200 is not an error to PostGIS — it wraps. That turns a
+ * client-side unit bug (degrees vs radians, swapped axes, a stray parse) into
+ * a valid-looking row somewhere unexpected, which then behaves normally in
+ * every proximity query. Failing at the boundary keeps the bug attached to the
+ * request that caused it.
+ *
+ * Exported because the same check belongs on API input, not just at the
+ * storage edge.
+ */
+export function assertValidLngLat(value: LngLat): void {
+  if (!Number.isFinite(value.lng) || !Number.isFinite(value.lat)) {
+    throw new Error(
+      `refusing to store a non-finite coordinate: ${JSON.stringify(value)}`,
+    );
+  }
+  if (value.lng < -180 || value.lng > 180) {
+    throw new Error(`longitude out of range: ${value.lng}`);
+  }
+  if (value.lat < -90 || value.lat > 90) {
+    throw new Error(`latitude out of range: ${value.lat}`);
+  }
+}
+
+/**
  * `geography(Point, 4326)` — the storage type for every coordinate in the
  * system.
  *
@@ -91,17 +117,7 @@ export const geographyPoint = customType<{
   },
 
   toDriver(value: LngLat): string {
-    if (!Number.isFinite(value.lng) || !Number.isFinite(value.lat)) {
-      throw new Error(
-        `refusing to store a non-finite coordinate: ${JSON.stringify(value)}`,
-      );
-    }
-    if (value.lng < -180 || value.lng > 180) {
-      throw new Error(`longitude out of range: ${value.lng}`);
-    }
-    if (value.lat < -90 || value.lat > 90) {
-      throw new Error(`latitude out of range: ${value.lat}`);
-    }
+    assertValidLngLat(value);
     return `SRID=${SRID_WGS84};POINT(${value.lng} ${value.lat})`;
   },
 
