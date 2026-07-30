@@ -72,6 +72,13 @@ verify: ## §0.4 — full verification run; non-zero exit on any failure
 	echo "verify: all checks passed"
 
 .PHONY: loadtest
-loadtest: ## §0.3/§12.3 — run the load harness against a target
-	# Parameterised by concurrency and dataset size; see tools/loadtest.
-	pnpm --filter @locum/loadtest run start
+loadtest: ## §0.3/§12.3 — prepare fixtures, run k6, verify the invariant
+	# One command, per §0.3. Parameterised by environment variables:
+	#   LOADTEST_CONTENDED_SHIFTS, LOADTEST_APPLICANTS_PER_SHIFT,
+	#   LOADTEST_FAVOURITES, LOADTEST_CONFIRM_VUS, LOADTEST_DURATION
+	# The verify step is what closes the gate: k6 measures latency, but whether
+	# the row lock held is a database question answered after the run.
+	@command -v k6 >/dev/null || { echo "k6 not installed: https://k6.io/docs/get-started/installation/"; exit 1; }
+	cd tools/loadtest && pnpm run prepare-fixtures
+	cd tools/loadtest && k6 run k6/booking-contention.js
+	cd tools/loadtest && pnpm run verify
