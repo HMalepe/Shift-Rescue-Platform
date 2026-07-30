@@ -7,6 +7,8 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 DATABASE_URL ?= postgresql://locum:locum_local_dev@localhost:5432/locum_planner_dev
+AUTH_SECRET ?= local-dev-auth-secret-at-least-32-chars
+export AUTH_SECRET
 export DATABASE_URL
 
 .PHONY: help

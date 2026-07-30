@@ -33,6 +33,20 @@ const schema = z.object({
   /** §12.1 — rate limiting on public endpoints. */
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
+   * A much tighter limit for /auth/login specifically (§12.1). The global
+   * limit keeps the service up; this one makes password guessing impractical,
+   * and those goals need very different numbers.
+   */
+  LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  LOGIN_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+
+  /**
+   * Signing key for access tokens. Rotating it invalidates every issued token.
+   * Required — there is no safe default for a signing secret.
+   */
+  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
 });
 
 export type Config = z.infer<typeof schema>;

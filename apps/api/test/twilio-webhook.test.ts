@@ -55,6 +55,7 @@ beforeAll(async () => {
       NODE_ENV: "test",
       TWILIO_AUTH_TOKEN: AUTH_TOKEN,
       PUBLIC_BASE_URL: BASE_URL,
+      AUTH_SECRET: "test-auth-secret-at-least-32-characters-long",
       DATABASE_URL:
         process.env["DATABASE_URL"] ??
         "postgresql://locum:locum_local_dev@localhost:5432/locum_planner_dev",

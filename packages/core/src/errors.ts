@@ -14,7 +14,17 @@ export type DomainErrorCode =
   | "BOOKING_NOT_CONFIRMABLE"
   | "LOCUM_NOT_VERIFIED"
   | "NOT_SHIFT_OWNER"
-  | "IDEMPOTENCY_KEY_REUSED";
+  | "IDEMPOTENCY_KEY_REUSED"
+  // §12.1 authentication
+  | "INVALID_CREDENTIALS"
+  | "ACCOUNT_DISABLED"
+  | "TOO_MANY_ATTEMPTS"
+  | "MFA_REQUIRED"
+  | "MFA_INVALID"
+  | "MFA_ENROLMENT_REQUIRED"
+  | "INVALID_REFRESH_TOKEN"
+  | "REFRESH_TOKEN_REUSED"
+  | "SESSION_INVALIDATED";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

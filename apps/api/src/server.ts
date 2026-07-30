@@ -4,6 +4,7 @@ import formBody from "@fastify/formbody";
 import { sql } from "drizzle-orm";
 import { createDatabase, type Database, type SqlClient } from "@locum/db";
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
+import { registerAuthRoutes } from "./routes/auth";
 import type { Config } from "./config";
 
 export interface BuiltServer {
@@ -75,6 +76,7 @@ export async function buildServer(config: Config): Promise<BuiltServer> {
   /** Liveness only — for the orchestrator's restart decision, not for alerting. */
   app.get("/health/live", async () => ({ status: "alive" }));
 
+  registerAuthRoutes(app, { db, config });
   registerTwilioStatusWebhook(app, { db, config });
 
   return { app, db, client };

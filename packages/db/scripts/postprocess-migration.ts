@@ -58,24 +58,34 @@ ALTER TABLE "shifts"
   ADD CONSTRAINT "shifts_radius_required_when_radius_visibility"
   CHECK ("visibility" <> 'radius' OR "radius_km" IS NOT NULL);`;
 
-function postprocess(path: string): boolean {
+function postprocess(path: string, isInitialMigration: boolean): boolean {
   const original = readFileSync(path, "utf8");
   let sql = original;
 
   // (1) Unquote PostGIS types: "geography(Point, 4326)" -> geography(Point, 4326)
+  // Applies to every migration — any of them may add a geography column.
   sql = sql.replace(/"(geography\([^"]*\))"/g, "$1");
 
-  // (2) Extensions must precede everything that uses them.
-  if (!sql.includes("CREATE EXTENSION IF NOT EXISTS postgis")) {
-    sql = EXTENSIONS_PREAMBLE + sql;
-  }
-
-  // (3) CHECK constraints, appended once the tables exist.
-  if (!sql.includes("verification_runs_passed_requires_evidence")) {
-    sql = sql.trimEnd() + EVIDENCE_CHECK;
-  }
-  if (!sql.includes("shifts_hourly_rate_non_negative")) {
-    sql = sql.trimEnd() + MONEY_CHECKS;
+  /*
+   * (2) and (3) belong to the FIRST migration only.
+   *
+   * These are one-time bootstrap statements: the extensions and the CHECK
+   * constraints on tables the initial migration creates. Appending them to
+   * every subsequent migration would re-issue `ADD CONSTRAINT` for
+   * constraints that already exist, and Postgres rejects that — so the second
+   * migration ever generated would fail to apply. (It did, before this guard;
+   * see the 0001 migration's history.)
+   */
+  if (isInitialMigration) {
+    if (!sql.includes("CREATE EXTENSION IF NOT EXISTS postgis")) {
+      sql = EXTENSIONS_PREAMBLE + sql;
+    }
+    if (!sql.includes("verification_runs_passed_requires_evidence")) {
+      sql = sql.trimEnd() + EVIDENCE_CHECK;
+    }
+    if (!sql.includes("shifts_hourly_rate_non_negative")) {
+      sql = sql.trimEnd() + MONEY_CHECKS;
+    }
   }
 
   if (sql !== original) {
@@ -85,10 +95,14 @@ function postprocess(path: string): boolean {
   return false;
 }
 
-const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql"));
+// Sorted so the numeric prefix determines which file is the initial migration.
+const files = readdirSync(MIGRATIONS_DIR)
+  .filter((f) => f.endsWith(".sql"))
+  .sort();
+
 let changed = 0;
-for (const file of files) {
-  if (postprocess(join(MIGRATIONS_DIR, file))) {
+for (const [index, file] of files.entries()) {
+  if (postprocess(join(MIGRATIONS_DIR, file), index === 0)) {
     console.log(`  postprocessed ${file}`);
     changed += 1;
   }
