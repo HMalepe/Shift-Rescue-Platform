@@ -1,0 +1,28 @@
+{
+  "name": "@locum/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test --max-warnings=0"
+  },
+  "dependencies": {
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/rate-limit": "^10.2.2",
+    "@locum/core": "workspace:*",
+    "@locum/db": "workspace:*",
+    "@trpc/server": "^11.0.0-rc.660",
+    "drizzle-orm": "^0.38.4",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

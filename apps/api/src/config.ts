@@ -1,0 +1,74 @@
+import { z } from "zod";
+
+/**
+ * Environment is parsed once at boot and fails loudly if anything is missing.
+ *
+ * The alternative — reading `process.env.X` at the call site — defers the
+ * failure to the first request that happens to touch that code path. For the
+ * Twilio webhook secret in particular that would mean discovering a
+ * misconfiguration when a real delivery receipt arrives and gets rejected,
+ * which looks like a Twilio problem rather than a deploy problem.
+ */
+const schema = z.object({
+  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  ENVIRONMENT: z.string().default("local"),
+  PORT: z.coerce.number().int().positive().default(3000),
+  HOST: z.string().default("0.0.0.0"),
+
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_MAX_CONNECTIONS: z.coerce.number().int().positive().default(10),
+
+  /**
+   * §11.5 — used to validate X-Twilio-Signature on inbound webhooks.
+   *
+   * Optional so the service can boot locally without Twilio credentials, but
+   * `assertProductionReady` below refuses to let that state reach production:
+   * an unset secret means signature validation is skipped, which turns the
+   * webhook into an unauthenticated write endpoint.
+   */
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  /** Public base URL, needed because Twilio signs the full request URL. */
+  PUBLIC_BASE_URL: z.string().url().default("http://localhost:3000"),
+
+  /** §12.1 — rate limiting on public endpoints. */
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+});
+
+export type Config = z.infer<typeof schema>;
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  const parsed = schema.safeParse(env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`invalid environment:\n${issues}`);
+  }
+  return parsed.data;
+}
+
+/**
+ * Refuses to start in production with a configuration that is only safe
+ * locally. Called from main.ts before the server listens.
+ */
+export function assertProductionReady(config: Config): void {
+  if (config.NODE_ENV !== "production") return;
+
+  const problems: string[] = [];
+
+  if (!config.TWILIO_AUTH_TOKEN) {
+    problems.push(
+      "TWILIO_AUTH_TOKEN is unset — inbound webhook signatures would not be verified",
+    );
+  }
+  if (config.PUBLIC_BASE_URL.startsWith("http://")) {
+    problems.push("PUBLIC_BASE_URL must be https in production");
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `refusing to start in production:\n${problems.map((p) => `  ${p}`).join("\n")}`,
+    );
+  }
+}
