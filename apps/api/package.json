@@ -15,9 +15,10 @@
     "@fastify/rate-limit": "^10.2.2",
     "@locum/core": "workspace:*",
     "@locum/db": "workspace:*",
-    "@trpc/server": "^11.0.0-rc.660",
+    "@trpc/server": "^11.0.0",
     "drizzle-orm": "^0.38.4",
     "fastify": "^5.2.1",
+    "fastify-plugin": "^6.0.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

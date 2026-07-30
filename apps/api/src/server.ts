@@ -5,6 +5,12 @@ import { sql } from "drizzle-orm";
 import { createDatabase, type Database, type SqlClient } from "@locum/db";
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
 import { registerAuthRoutes } from "./routes/auth";
+import {
+  fastifyTRPCPlugin,
+  type CreateFastifyContextOptions,
+} from "@trpc/server/adapters/fastify";
+import { appRouter } from "./trpc/router";
+import { createContext } from "./trpc/context";
 import type { Config } from "./config";
 
 export interface BuiltServer {
@@ -78,6 +84,23 @@ export async function buildServer(config: Config): Promise<BuiltServer> {
 
   registerAuthRoutes(app, { db, config });
   registerTwilioStatusWebhook(app, { db, config });
+
+  /*
+   * tRPC. Mounted last so the explicit REST routes above (auth, webhooks) keep
+   * their own error shapes — Twilio and Payfast expect plain HTTP status
+   * codes, not a tRPC envelope.
+   */
+  await app.register(fastifyTRPCPlugin, {
+    prefix: "/trpc",
+    trpcOptions: {
+      router: appRouter,
+      createContext: ({ req }: CreateFastifyContextOptions) =>
+        createContext({ db, config }, req),
+      onError({ error, path }: { error: Error; path?: string | undefined }) {
+        app.log.error({ err: error, path }, "tRPC handler error");
+      },
+    },
+  });
 
   return { app, db, client };
 }

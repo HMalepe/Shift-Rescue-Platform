@@ -2,7 +2,13 @@ import { afterAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import * as s from "@locum/db/schema";
 import { confirmBooking, countConfirmedBookings, isDomainError } from "../../src/index";
-import { connect, createContendedShift, cleanupScenario } from "../helpers/fixtures";
+import {
+  connect,
+  createContendedShift,
+  cleanupScenario,
+  createOutsiderManager,
+  cleanupOutsider,
+} from "../helpers/fixtures";
 
 /**
  * GATE: code.concurrency
@@ -113,6 +119,32 @@ describe("GATE code.concurrency — booking confirmation", () => {
       // the previous test is the one that fails if the lock is removed there.
       expect(fallbackHits).toBeGreaterThan(0);
     } finally {
+      await cleanupScenario(db, scenario);
+    }
+  });
+
+  it("refuses a manager from a different pharmacy", async () => {
+    /*
+     * Authorisation is enforced in the domain layer, not only at the API edge.
+     * This test calls confirmBooking directly — exactly as the worker or a
+     * future admin tool would — so it fails if the check is moved out to a
+     * tRPC middleware and nothing is left behind here.
+     */
+    const scenario = await createContendedShift(db, 2);
+    const outsider = await createOutsiderManager(db);
+
+    try {
+      await expect(
+        confirmBooking(db, {
+          bookingId: scenario.bookingIds[0]!,
+          actorId: outsider.id,
+        }),
+      ).rejects.toMatchObject({ code: "NOT_SHIFT_OWNER" });
+
+      // Nothing was confirmed as a side effect of the rejected attempt.
+      expect(await countConfirmedBookings(db, scenario.shiftId)).toBe(0);
+    } finally {
+      await cleanupOutsider(db, outsider.id);
       await cleanupScenario(db, scenario);
     }
   });

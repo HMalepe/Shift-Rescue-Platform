@@ -57,6 +57,13 @@ export async function createContendedShift(
     })
     .returning({ id: s.pharmacies.id });
 
+  // confirmBooking requires the actor to be a member of the owning pharmacy.
+  await db.insert(s.pharmacyMembers).values({
+    pharmacyId: pharmacy!.id,
+    userId: manager!.id,
+    isPrimary: true,
+  });
+
   const [shift] = await db
     .insert(s.shifts)
     .values({
@@ -115,10 +122,30 @@ export async function cleanupScenario(db: Database, scenario: ShiftScenario) {
   await db.delete(s.bookings).where(eq(s.bookings.shiftId, scenario.shiftId));
   await db.delete(s.shifts).where(eq(s.shifts.id, scenario.shiftId));
   await db
+    .delete(s.pharmacyMembers)
+    .where(eq(s.pharmacyMembers.pharmacyId, scenario.pharmacyId));
+  await db
     .delete(s.locumProfiles)
     .where(inArray(s.locumProfiles.userId, [...scenario.locumIds]));
   await db.delete(s.pharmacies).where(eq(s.pharmacies.id, scenario.pharmacyId));
   await db
     .delete(s.users)
     .where(inArray(s.users.id, [scenario.managerId, ...scenario.locumIds]));
+}
+
+/** A manager belonging to no pharmacy in the scenario — the outsider case. */
+export async function createOutsiderManager(db: Database) {
+  const [user] = await db
+    .insert(s.users)
+    .values({
+      role: "manager",
+      email: `outsider-${unique()}@test.invalid`,
+      fullName: "Outsider Manager",
+    })
+    .returning({ id: s.users.id });
+  return { id: user!.id };
+}
+
+export async function cleanupOutsider(db: Database, userId: string) {
+  await db.delete(s.users).where(eq(s.users.id, userId));
 }

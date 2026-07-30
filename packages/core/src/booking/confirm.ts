@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { bookings, shifts, type Database } from "@locum/db";
+import { bookings, pharmacyMembers, shifts, type Database } from "@locum/db";
 import { DomainError, isUniqueViolation } from "../errors";
 
 export interface ConfirmBookingInput {
@@ -127,14 +127,20 @@ export async function confirmBooking(
      * conflict would only surface at the unique index. The shift row is the
      * single point of contention, so it is the thing to serialise on.
      */
+    const shiftColumns = {
+      id: shifts.id,
+      status: shifts.status,
+      pharmacyId: shifts.pharmacyId,
+    };
+
     const lockedShift = input.__unsafeSkipRowLockForMutationTesting
       ? await tx
-          .select({ id: shifts.id, status: shifts.status })
+          .select(shiftColumns)
           .from(shifts)
           .where(eq(shifts.id, booking.shiftId))
           .limit(1)
       : await tx
-          .select({ id: shifts.id, status: shifts.status })
+          .select(shiftColumns)
           .from(shifts)
           .where(eq(shifts.id, booking.shiftId))
           .limit(1)
@@ -145,6 +151,39 @@ export async function confirmBooking(
       throw new DomainError("SHIFT_NOT_FOUND", "Shift does not exist", {
         shiftId: booking.shiftId,
       });
+    }
+
+    /*
+     * Authorisation, enforced here rather than only at the transport edge.
+     *
+     * The actor must belong to the pharmacy that posted the shift. Checking
+     * this in the API layer alone would leave the rule unenforced for the
+     * BullMQ worker, any future admin tool, and any second transport — all of
+     * which call this same function. A booking confirmation is what commits a
+     * pharmacy to a locum turning up, so "who is allowed to press this" is a
+     * domain rule, not a routing concern.
+     *
+     * The membership check doubles as the existence check: a manager at
+     * another pharmacy gets NOT_SHIFT_OWNER whether or not the shift exists,
+     * which avoids confirming the existence of other pharmacies' shifts.
+     */
+    const [membership] = await tx
+      .select({ userId: pharmacyMembers.userId })
+      .from(pharmacyMembers)
+      .where(
+        and(
+          eq(pharmacyMembers.pharmacyId, shift.pharmacyId),
+          eq(pharmacyMembers.userId, input.actorId),
+        ),
+      )
+      .limit(1);
+
+    if (!membership) {
+      throw new DomainError(
+        "NOT_SHIFT_OWNER",
+        "You do not have permission to confirm bookings for this shift",
+        { shiftId: shift.id },
+      );
     }
 
     // Re-read AFTER acquiring the lock. A confirmation that was in flight when
