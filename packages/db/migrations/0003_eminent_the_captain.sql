@@ -1,0 +1,2 @@
+ALTER TABLE "whatsapp_message_log" ADD COLUMN "scheduled_for" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "whatsapp_message_log_due_idx" ON "whatsapp_message_log" USING btree ("scheduled_for") WHERE "whatsapp_message_log"."status" = 'queued' AND "whatsapp_message_log"."scheduled_for" is not null;

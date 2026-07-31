@@ -51,6 +51,9 @@ const HTTP_BY_DOMAIN_CODE: Partial<
   DOCUMENT_NOT_FOUND: "NOT_FOUND",
   DOCUMENT_NOT_REVIEWABLE: "CONFLICT",
   DOCUMENT_ALREADY_REVIEWED: "CONFLICT",
+  // §9 cancellation
+  NOT_BOOKING_PARTICIPANT: "FORBIDDEN",
+  BOOKING_NOT_CANCELLABLE: "CONFLICT",
 };
 
 const withDomainErrors = t.middleware(async ({ next }) => {

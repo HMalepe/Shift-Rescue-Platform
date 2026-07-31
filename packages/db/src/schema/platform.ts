@@ -98,6 +98,15 @@ export const whatsappMessageLog = pgTable(
     /** §11.6 — per-message billable cost, for the daily spend cap and alerting. */
     priceCents: integer("price_cents"),
 
+    /**
+     * §4.4 — when a send was deferred out of quiet hours, the time it should
+     * actually go out (07:00 local).
+     *
+     * Null means "send immediately". A row with this set and status 'queued'
+     * is the worker's work list.
+     */
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+
     errorCode: varchar("error_code", { length: 20 }),
     statusUpdatedAt: timestamp("status_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -113,6 +122,10 @@ export const whatsappMessageLog = pgTable(
       table.createdAt,
       table.category,
     ),
+    // The quiet-hours worker's hot query: what is due to go out now.
+    index("whatsapp_message_log_due_idx")
+      .on(table.scheduledFor)
+      .where(sql`${table.status} = 'queued' AND ${table.scheduledFor} is not null`),
   ],
 );
 

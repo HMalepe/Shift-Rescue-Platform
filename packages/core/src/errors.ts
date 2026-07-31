@@ -37,7 +37,10 @@ export type DomainErrorCode =
   | "DOCUMENT_REJECTED"
   | "DOCUMENT_NOT_FOUND"
   | "DOCUMENT_NOT_REVIEWABLE"
-  | "DOCUMENT_ALREADY_REVIEWED";
+  | "DOCUMENT_ALREADY_REVIEWED"
+  // §9 cancellation
+  | "NOT_BOOKING_PARTICIPANT"
+  | "BOOKING_NOT_CANCELLABLE";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

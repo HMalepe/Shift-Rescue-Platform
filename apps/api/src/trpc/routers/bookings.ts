@@ -2,8 +2,13 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { bookings, locumProfiles, pharmacyMembers, shifts, users } from "@locum/db";
-import { confirmBooking, withIdempotency } from "@locum/core";
-import { router, managerProcedure, locumProcedure } from "../trpc";
+import { cancelBooking, confirmBooking, withIdempotency } from "@locum/core";
+import {
+  router,
+  managerProcedure,
+  locumProcedure,
+  protectedProcedure,
+} from "../trpc";
 
 export const bookingsRouter = router({
   /**
@@ -102,6 +107,30 @@ export const bookingsRouter = router({
       });
       return result;
     }),
+
+  /**
+   * §9 — either side cancels a confirmed booking.
+   *
+   * Deliberately available to both, on `protectedProcedure` rather than a
+   * role-scoped one: the domain service decides whether the caller is the
+   * booked locum or a manager at the owning pharmacy, and refuses anyone else.
+   * Splitting this into two role-gated procedures would duplicate that rule at
+   * the edge and let the two drift.
+   */
+  cancel: protectedProcedure
+    .input(
+      z.object({
+        bookingId: z.string().uuid(),
+        reason: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      cancelBooking(ctx.db, {
+        bookingId: input.bookingId,
+        actorId: ctx.user.id,
+        ...(input.reason !== undefined && { reason: input.reason }),
+      }),
+    ),
 
   /**
    * Applicants for one of the manager's own shifts.
