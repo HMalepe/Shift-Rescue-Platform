@@ -3,6 +3,12 @@ import rateLimit from "@fastify/rate-limit";
 import formBody from "@fastify/formbody";
 import { sql } from "drizzle-orm";
 import { createDatabase, type Database, type SqlClient } from "@locum/db";
+import {
+  InMemoryDocumentStorage,
+  StubDocumentScanner,
+  type DocumentScanner,
+  type DocumentStorage,
+} from "@locum/core";
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
 import { registerAuthRoutes } from "./routes/auth";
 import {
@@ -19,7 +25,23 @@ export interface BuiltServer {
   readonly client: SqlClient;
 }
 
-export async function buildServer(config: Config): Promise<BuiltServer> {
+export interface ServerDeps {
+  /**
+   * Overridable so tests and local development can run without S3 or a virus
+   * daemon. Production must inject real implementations — see
+   * `assertProductionReady`, which refuses to boot with the stubs.
+   */
+  readonly documentStorage?: DocumentStorage;
+  readonly documentScanner?: DocumentScanner;
+}
+
+export async function buildServer(
+  config: Config,
+  deps: ServerDeps = {},
+): Promise<BuiltServer> {
+  const documentStorage = deps.documentStorage ?? new InMemoryDocumentStorage();
+  const documentScanner = deps.documentScanner ?? new StubDocumentScanner();
+
   const { db, client } = createDatabase({
     url: config.DATABASE_URL,
     maxConnections: config.DATABASE_MAX_CONNECTIONS,
@@ -95,7 +117,7 @@ export async function buildServer(config: Config): Promise<BuiltServer> {
     trpcOptions: {
       router: appRouter,
       createContext: ({ req }: CreateFastifyContextOptions) =>
-        createContext({ db, config }, req),
+        createContext({ db, config, documentStorage, documentScanner }, req),
       onError({ error, path }: { error: Error; path?: string | undefined }) {
         app.log.error({ err: error, path }, "tRPC handler error");
       },

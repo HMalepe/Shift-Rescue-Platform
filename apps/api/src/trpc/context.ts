@@ -1,7 +1,11 @@
 import type { FastifyRequest } from "fastify";
 import { and, eq, isNull } from "drizzle-orm";
 import { sessions, users, type Database, type UserRole } from "@locum/db";
-import { verifyAccessToken } from "@locum/core";
+import {
+  verifyAccessToken,
+  type DocumentScanner,
+  type DocumentStorage,
+} from "@locum/core";
 import type { Config } from "../config";
 
 export interface AuthenticatedUser {
@@ -17,11 +21,16 @@ export interface TrpcContext {
   readonly config: Config;
   readonly user: AuthenticatedUser | null;
   readonly ipAddress: string;
+  /** Injected so the verification workflow is testable without S3/ClamAV. */
+  readonly documentStorage: DocumentStorage;
+  readonly documentScanner: DocumentScanner;
 }
 
 export interface ContextDeps {
   readonly db: Database;
   readonly config: Config;
+  readonly documentStorage: DocumentStorage;
+  readonly documentScanner: DocumentScanner;
 }
 
 /**
@@ -46,6 +55,8 @@ export async function createContext(
     db: deps.db,
     config: deps.config,
     ipAddress: request.ip,
+    documentStorage: deps.documentStorage,
+    documentScanner: deps.documentScanner,
   };
 
   const header = request.headers.authorization;

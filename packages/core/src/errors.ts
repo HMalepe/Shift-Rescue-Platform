@@ -32,7 +32,12 @@ export type DomainErrorCode =
   | "CHECK_IN_TOO_LATE"
   | "ALREADY_CHECKED_IN"
   | "NOT_CHECKED_IN"
-  | "ALREADY_CHECKED_OUT";
+  | "ALREADY_CHECKED_OUT"
+  // §5 / §12.1 verification
+  | "DOCUMENT_REJECTED"
+  | "DOCUMENT_NOT_FOUND"
+  | "DOCUMENT_NOT_REVIEWABLE"
+  | "DOCUMENT_ALREADY_REVIEWED";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

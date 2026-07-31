@@ -2,7 +2,15 @@ import { assertProductionReady, loadConfig } from "./config";
 import { buildServer } from "./server";
 
 const config = loadConfig();
-assertProductionReady(config);
+
+/*
+ * No real storage or scanner adapters exist yet (§15 classes them as
+ * externally blocked — they need an S3 bucket and a scanning service), so the
+ * stubs are what buildServer will fall back to. assertProductionReady is told
+ * that explicitly, and refuses to start in production because of it. When the
+ * real adapters land, construct them here and pass them in.
+ */
+assertProductionReady(config, { usingStubDocumentDeps: true });
 
 const { app, client } = await buildServer(config);
 

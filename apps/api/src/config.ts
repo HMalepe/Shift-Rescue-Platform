@@ -66,10 +66,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
  * Refuses to start in production with a configuration that is only safe
  * locally. Called from main.ts before the server listens.
  */
-export function assertProductionReady(config: Config): void {
+export function assertProductionReady(
+  config: Config,
+  runtime: {
+    /** True when the in-memory storage / stub scanner are in use. */
+    readonly usingStubDocumentDeps?: boolean;
+  } = {},
+): void {
   if (config.NODE_ENV !== "production") return;
 
   const problems: string[] = [];
+
+  /*
+   * §12.1 requires uploads to be "scanned for malware before storage". The
+   * stub scanner detects only EICAR, and the in-memory store loses everything
+   * on restart. Booting production with either is worse than having no upload
+   * feature at all, because the admin queue would present unscanned documents
+   * as though they had passed.
+   */
+  if (runtime.usingStubDocumentDeps) {
+    problems.push(
+      "document storage/scanner are the in-memory stubs — wire real S3 and a malware scanner before production",
+    );
+  }
 
   if (!config.TWILIO_AUTH_TOKEN) {
     problems.push(
