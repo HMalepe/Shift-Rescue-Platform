@@ -92,167 +92,174 @@ export async function confirmBooking(
   observers: ConfirmBookingObservers = {},
 ): Promise<ConfirmBookingResult> {
   return db.transaction(async (tx) => {
-    const [booking] = await tx
-      .select({
-        id: bookings.id,
-        shiftId: bookings.shiftId,
-        locumId: bookings.locumId,
-        status: bookings.status,
-      })
-      .from(bookings)
-      .where(eq(bookings.id, input.bookingId))
-      .limit(1);
+    /*
+     * ONE round trip acquires the lock and fetches everything needed to decide.
+     *
+     * This shape is a direct response to a measured problem. The first version
+     * issued five sequential statements — select booking, lock shift, check
+     * membership, update booking, update shift — three of them while HOLDING
+     * the lock. Under load that hold time multiplies by every waiter: at 500
+     * VUs across 40 shifts (~12 deep per shift) the k6 run measured p95 1.69s
+     * on confirm.
+     *
+     * Nothing in the membership check depends on the lock, and the booking row
+     * is reachable by join, so both fold into the locking statement. The
+     * LEFT JOIN on pharmacy_members lets a missing membership be distinguished
+     * from a missing booking, which an inner join would conflate into one
+     * indistinguishable "no rows".
+     *
+     * `FOR UPDATE OF s` locks only the shift row. Locking the booking rows too
+     * would serialise applicants against each other for no benefit — the
+     * contended resource is the shift.
+     */
+    const lockClause = input.__unsafeSkipRowLockForMutationTesting
+      ? sql``
+      : sql` FOR UPDATE OF s`;
 
-    if (!booking) {
+    const rows = await tx.execute<{
+      booking_id: string;
+      booking_status: string;
+      locum_id: string;
+      shift_id: string;
+      shift_status: string;
+      is_member: boolean;
+    }>(sql`
+      SELECT
+        b.id           AS booking_id,
+        b.status::text AS booking_status,
+        b.locum_id     AS locum_id,
+        s.id           AS shift_id,
+        s.status::text AS shift_status,
+        (pm.user_id IS NOT NULL) AS is_member
+      FROM ${bookings} b
+      JOIN ${shifts} s ON s.id = b.shift_id
+      LEFT JOIN ${pharmacyMembers} pm
+        ON pm.pharmacy_id = s.pharmacy_id
+       AND pm.user_id = ${input.actorId}::uuid
+      WHERE b.id = ${input.bookingId}::uuid
+    ` .append(lockClause));
+
+    const row = (rows as unknown as Array<{
+      booking_id: string;
+      booking_status: string;
+      locum_id: string;
+      shift_id: string;
+      shift_status: string;
+      is_member: boolean;
+    }>)[0];
+
+    if (!row) {
       throw new DomainError("BOOKING_NOT_FOUND", "Booking does not exist", {
         bookingId: input.bookingId,
       });
     }
 
-    if (booking.status !== "requested") {
+    if (row.booking_status !== "requested") {
       throw new DomainError(
         "BOOKING_NOT_CONFIRMABLE",
-        `Cannot confirm a booking in state '${booking.status}'`,
-        { bookingId: booking.id, status: booking.status },
+        `Cannot confirm a booking in state '${row.booking_status}'`,
+        { bookingId: row.booking_id, status: row.booking_status },
       );
     }
 
     /*
-     * Lock the SHIFT row, not the booking row.
+     * Authorisation, enforced in the domain layer rather than only at the
+     * transport edge. The same function is called by the BullMQ worker and by
+     * any future admin tool, so a rule checked only in a tRPC middleware would
+     * be unenforced for every other caller.
      *
-     * The invariant being defended is "one confirmed booking per shift", and
-     * competing confirmations are for *different* booking rows against the
-     * *same* shift. Locking each booking row would let both transactions
-     * proceed in parallel, each holding a lock nobody else wants, and the
-     * conflict would only surface at the unique index. The shift row is the
-     * single point of contention, so it is the thing to serialise on.
+     * Membership doubles as the existence check: an outsider gets
+     * NOT_SHIFT_OWNER whether or not the shift exists, so this cannot be used
+     * to enumerate other pharmacies' shifts.
      */
-    const shiftColumns = {
-      id: shifts.id,
-      status: shifts.status,
-      pharmacyId: shifts.pharmacyId,
-    };
-
-    const lockedShift = input.__unsafeSkipRowLockForMutationTesting
-      ? await tx
-          .select(shiftColumns)
-          .from(shifts)
-          .where(eq(shifts.id, booking.shiftId))
-          .limit(1)
-      : await tx
-          .select(shiftColumns)
-          .from(shifts)
-          .where(eq(shifts.id, booking.shiftId))
-          .limit(1)
-          .for("update");
-
-    const shift = lockedShift[0];
-    if (!shift) {
-      throw new DomainError("SHIFT_NOT_FOUND", "Shift does not exist", {
-        shiftId: booking.shiftId,
-      });
-    }
-
-    /*
-     * Authorisation, enforced here rather than only at the transport edge.
-     *
-     * The actor must belong to the pharmacy that posted the shift. Checking
-     * this in the API layer alone would leave the rule unenforced for the
-     * BullMQ worker, any future admin tool, and any second transport — all of
-     * which call this same function. A booking confirmation is what commits a
-     * pharmacy to a locum turning up, so "who is allowed to press this" is a
-     * domain rule, not a routing concern.
-     *
-     * The membership check doubles as the existence check: a manager at
-     * another pharmacy gets NOT_SHIFT_OWNER whether or not the shift exists,
-     * which avoids confirming the existence of other pharmacies' shifts.
-     */
-    const [membership] = await tx
-      .select({ userId: pharmacyMembers.userId })
-      .from(pharmacyMembers)
-      .where(
-        and(
-          eq(pharmacyMembers.pharmacyId, shift.pharmacyId),
-          eq(pharmacyMembers.userId, input.actorId),
-        ),
-      )
-      .limit(1);
-
-    if (!membership) {
+    if (!row.is_member) {
       throw new DomainError(
         "NOT_SHIFT_OWNER",
         "You do not have permission to confirm bookings for this shift",
-        { shiftId: shift.id },
+        { shiftId: row.shift_id },
       );
     }
 
-    // Re-read AFTER acquiring the lock. A confirmation that was in flight when
-    // this transaction started has now committed and is visible, so this is the
-    // check that actually catches the race.
-    if (shift.status === "filled") {
+    // Read AFTER the lock: a confirmation that was in flight when this
+    // transaction began has now committed and is visible. This is the check
+    // that actually catches the race.
+    if (row.shift_status === "filled") {
       throw new DomainError(
         "SHIFT_ALREADY_FILLED",
         "This shift has already been filled",
-        { shiftId: shift.id },
+        { shiftId: row.shift_id },
       );
     }
 
-    if (shift.status !== "open") {
+    if (row.shift_status !== "open") {
       throw new DomainError(
         "SHIFT_NOT_OPEN",
-        `Cannot confirm against a shift in state '${shift.status}'`,
-        { shiftId: shift.id, status: shift.status },
+        `Cannot confirm against a shift in state '${row.shift_status}'`,
+        { shiftId: row.shift_id, status: row.shift_status },
       );
     }
 
     const confirmedAt = new Date();
+    // postgres.js will not bind a Date through a raw template; ISO text with
+    // an explicit cast is unambiguous and avoids any client-side timezone
+    // interpretation.
+    const confirmedAtIso = confirmedAt.toISOString();
 
+    /*
+     * Both writes in ONE round trip via a CTE.
+     *
+     * They must be atomic with each other anyway — a confirmed booking against
+     * a shift still marked 'open' is the inconsistency the load-test verifier
+     * checks for — and issuing them separately just holds the lock for a second
+     * network round trip.
+     */
     try {
-      await tx
-        .update(bookings)
-        .set({
-          status: "confirmed",
-          confirmedAt,
-          confirmedBy: input.actorId,
-          updatedAt: confirmedAt,
-        })
-        .where(eq(bookings.id, booking.id));
+      await tx.execute(sql`
+        WITH confirmed AS (
+          UPDATE ${bookings}
+             SET status = 'confirmed',
+                 confirmed_at = ${confirmedAtIso}::timestamptz,
+                 confirmed_by = ${input.actorId}::uuid,
+                 updated_at = ${confirmedAtIso}::timestamptz
+           WHERE id = ${row.booking_id}::uuid
+          RETURNING shift_id
+        )
+        UPDATE ${shifts}
+           SET status = 'filled',
+               updated_at = ${confirmedAtIso}::timestamptz
+         WHERE id = (SELECT shift_id FROM confirmed)
+      `);
     } catch (error) {
-      // Reachable only if the row lock was bypassed. Translated rather than
-      // rethrown so callers see one error shape for one business outcome —
-      // but reported first, because silently translating it would hide the
-      // fact that the lock is no longer doing its job.
+      /*
+       * Reachable only if the row lock was bypassed. Reported to the observer
+       * BEFORE being translated: silently converting it would hide the fact
+       * that the lock has stopped doing its job, and that counter is both the
+       * §12.4 mutation check and the production regression alarm.
+       */
       if (isUniqueViolation(error, "bookings_one_confirmed_per_shift")) {
         observers.onUniqueViolationFallback?.({
-          shiftId: shift.id,
-          bookingId: booking.id,
+          shiftId: row.shift_id,
+          bookingId: row.booking_id,
         });
         throw new DomainError(
           "SHIFT_ALREADY_FILLED",
           "This shift has already been filled",
-          { shiftId: shift.id },
+          { shiftId: row.shift_id },
         );
       }
       throw error;
     }
 
-    await tx
-      .update(shifts)
-      .set({ status: "filled", updatedAt: confirmedAt })
-      .where(eq(shifts.id, shift.id));
-
     /*
-     * Losing applicants are left in 'requested' rather than auto-declined.
-     *
-     * A manager who confirms the wrong person needs to be able to reverse it,
-     * and mass-declining here would destroy the queue they would reverse into.
-     * The read path filters by shift status instead.
+     * Losing applicants stay 'requested' rather than being auto-declined. A
+     * manager who confirms the wrong person needs to reverse it, and mass
+     * declining would destroy the queue they would reverse into.
      */
 
     return {
-      bookingId: booking.id,
-      shiftId: shift.id,
-      locumId: booking.locumId,
+      bookingId: row.booking_id,
+      shiftId: row.shift_id,
+      locumId: row.locum_id,
       confirmedAt,
     };
   });
