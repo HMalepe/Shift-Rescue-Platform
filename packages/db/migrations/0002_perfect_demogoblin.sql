@@ -1,0 +1,1 @@
+ALTER TABLE "check_ins" ADD COLUMN "check_out_distance_m" integer;

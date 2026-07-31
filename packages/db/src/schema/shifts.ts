@@ -218,8 +218,20 @@ export const checkIns = pgTable(
     mockLocationDetected: boolean("mock_location_detected"),
     deviceSignals: jsonb("device_signals"),
 
-    /** Distance from the pharmacy at check-in, in metres, computed server-side. */
+    /**
+     * Distance from the pharmacy at check-in and check-out, in metres,
+     * computed SERVER-SIDE from the pharmacy's stored location.
+     *
+     * Never accepted from the client: a distance the device reports is a
+     * number the device chose, which is worthless as evidence. The client
+     * supplies only a coordinate, and even that is treated as a claim.
+     *
+     * Check-out distance matters as much as check-in: a locum who checks out
+     * from home an hour early is exactly the case an hours-worked record needs
+     * to make visible (§10.0).
+     */
     checkInDistanceM: integer("check_in_distance_m"),
+    checkOutDistanceM: integer("check_out_distance_m"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

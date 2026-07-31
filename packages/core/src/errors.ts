@@ -24,7 +24,15 @@ export type DomainErrorCode =
   | "MFA_ENROLMENT_REQUIRED"
   | "INVALID_REFRESH_TOKEN"
   | "REFRESH_TOKEN_REUSED"
-  | "SESSION_INVALIDATED";
+  | "SESSION_INVALIDATED"
+  // §8 attendance
+  | "NOT_BOOKING_OWNER"
+  | "BOOKING_NOT_CONFIRMED"
+  | "CHECK_IN_TOO_EARLY"
+  | "CHECK_IN_TOO_LATE"
+  | "ALREADY_CHECKED_IN"
+  | "NOT_CHECKED_IN"
+  | "ALREADY_CHECKED_OUT";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;
