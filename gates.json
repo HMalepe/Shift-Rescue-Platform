@@ -142,6 +142,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "apps/worker/test/scheduler.test.ts against real Redis and real Postgres: a dispatched job moves a real row, an unhandled job name fails loudly, stale schedules are reconciled away on boot, re-registering does not double the cadence."
+    },
+    {
+      "gateId": "messaging.disintermediation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§6/§14 — 17 tests in packages/core/test/gates/disintermediation.test.ts. Mechanism is asserted hard: every rule fires, the false positives §14 names by hand do not, a flagged message is still delivered verbatim, the flag is invisible to participants, and the time gate refuses non-participants and threads closed 72h after the shift. Accuracy is reported and deliberately NOT asserted — §15: 'the number does not exist until measured', and the corpus labels were written by the same process that wrote the regexes. Provisional over 220 messages: 47 TP / 0 FP / 171 TN / 2 FN. The gate cannot close until reviewed:true appears in the corpus (§16 human labelling, Phase 1)."
     }
   ]
 }

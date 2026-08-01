@@ -54,6 +54,9 @@ const HTTP_BY_DOMAIN_CODE: Partial<
   // §9 cancellation
   NOT_BOOKING_PARTICIPANT: "FORBIDDEN",
   BOOKING_NOT_CANCELLABLE: "CONFLICT",
+  // §6 messaging. A closed thread is a state conflict, not a permission
+  // problem: the caller IS a participant, the window has simply passed.
+  THREAD_CLOSED: "CONFLICT",
 };
 
 const withDomainErrors = t.middleware(async ({ next }) => {

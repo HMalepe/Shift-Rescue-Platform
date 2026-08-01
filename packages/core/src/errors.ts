@@ -41,6 +41,8 @@ export type DomainErrorCode =
   // §9 cancellation
   | "NOT_BOOKING_PARTICIPANT"
   | "BOOKING_NOT_CANCELLABLE"
+  // §6 messaging
+  | "THREAD_CLOSED"
   // §2 billing
   | "SUBSCRIPTION_NOT_FOUND"
   | "SUBSCRIPTION_CANCELLED"
