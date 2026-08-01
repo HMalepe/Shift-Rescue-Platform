@@ -30,6 +30,11 @@ install: ## Install workspace dependencies
 up: ## Start local Postgres+PostGIS and Redis
 	docker compose up -d --wait
 
+.PHONY: up-native
+up-native: ## Start Postgres+PostGIS and Redis without Docker
+	bash scripts/local-pg.sh
+	bash scripts/local-redis.sh
+
 .PHONY: down
 down: ## Stop local infrastructure
 	docker compose down
@@ -53,6 +58,10 @@ generate: ## Regenerate migrations from the Drizzle schema
 .PHONY: seed
 seed: ## Seed realistic test data (§14)
 	pnpm --filter @locum/db seed
+
+.PHONY: dev-users
+dev-users: ## Give the seeded fixtures a password and create an admin (local only)
+	pnpm --filter @locum/devdata dev-users
 
 .PHONY: gates
 gates: ## §12.5 — reconstruct the gate ledger in verification_runs from gates.json

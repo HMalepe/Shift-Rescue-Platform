@@ -173,3 +173,44 @@ describe("GATE code.concurrency — booking confirmation", () => {
     }
   });
 });
+
+describe("GATE security.authorization — §5 verification at confirm time", () => {
+  it("refuses to confirm a locum whose registration is not verified", async () => {
+    /*
+     * `LOCUM_NOT_VERIFIED` was a defined error code, mapped to a 403 in the
+     * tRPC layer, and thrown by nothing. The only verification check lived in
+     * the apply endpoint — so any `requested` row that arrived another way
+     * (the §14 seed generator, a support script, a bulk import) could be
+     * confirmed, and the manager would be told the pharmacist was checked.
+     *
+     * Found by opening the admin board and seeing a Confirm button next to an
+     * applicant marked REJECTED.
+     *
+     * The revocation case is the one that cannot be fixed at the edge: a locum
+     * verified when they applied and struck off before they were confirmed
+     * passes every apply-time check by construction.
+     */
+    const scenario = await createContendedShift(db, 1);
+
+    await db
+      .update(s.locumProfiles)
+      .set({ verification: "rejected" })
+      .where(eq(s.locumProfiles.userId, scenario.locumIds[0]!));
+
+    const error = await confirmBooking(db, {
+      bookingId: scenario.bookingIds[0]!,
+      actorId: scenario.managerId,
+    }).catch((e: unknown) => e);
+
+    expect(isDomainError(error) && error.code).toBe("LOCUM_NOT_VERIFIED");
+
+    // And nothing moved: the shift is still open for someone who IS verified.
+    const [booking] = await db
+      .select({ status: s.bookings.status })
+      .from(s.bookings)
+      .where(eq(s.bookings.id, scenario.bookingIds[0]!));
+    expect(booking!.status).toBe("requested");
+
+    await cleanupScenario(db, scenario);
+  });
+});

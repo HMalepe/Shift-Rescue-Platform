@@ -45,3 +45,7 @@ tools/loadtest/results/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Next.js build output
+.next/
+next-env.d.ts

@@ -1,5 +1,11 @@
 import { and, eq, sql } from "drizzle-orm";
-import { bookings, pharmacyMembers, shifts, type Database } from "@locum/db";
+import {
+  bookings,
+  locumProfiles,
+  pharmacyMembers,
+  shifts,
+  type Database,
+} from "@locum/db";
 import { DomainError, isUniqueViolation } from "../errors";
 
 export interface ConfirmBookingInput {
@@ -123,6 +129,7 @@ export async function confirmBooking(
       shift_id: string;
       shift_status: string;
       is_member: boolean;
+      locum_verification: string | null;
     }>(sql`
       SELECT
         b.id           AS booking_id,
@@ -130,12 +137,15 @@ export async function confirmBooking(
         b.locum_id     AS locum_id,
         s.id           AS shift_id,
         s.status::text AS shift_status,
-        (pm.user_id IS NOT NULL) AS is_member
+        (pm.user_id IS NOT NULL) AS is_member,
+        lp.verification::text AS locum_verification
       FROM ${bookings} b
       JOIN ${shifts} s ON s.id = b.shift_id
       LEFT JOIN ${pharmacyMembers} pm
         ON pm.pharmacy_id = s.pharmacy_id
        AND pm.user_id = ${input.actorId}::uuid
+      LEFT JOIN ${locumProfiles} lp
+        ON lp.user_id = b.locum_id
       WHERE b.id = ${input.bookingId}::uuid
     ` .append(lockClause));
 
@@ -146,12 +156,42 @@ export async function confirmBooking(
       shift_id: string;
       shift_status: string;
       is_member: boolean;
+      locum_verification: string | null;
     }>)[0];
 
     if (!row) {
       throw new DomainError("BOOKING_NOT_FOUND", "Booking does not exist", {
         bookingId: input.bookingId,
       });
+    }
+
+    /*
+     * §5 — the platform's core promise to a manager is that SAPC registration
+     * was actually checked. Enforced HERE rather than only in the tRPC apply
+     * path, for the same reason the membership check moved down: a rule that
+     * lives at the transport edge is not a rule, it is a habit of one caller.
+     *
+     * The apply endpoint already refuses an unverified locum, so in the normal
+     * flow this never fires. It fires for every other way a `requested` row can
+     * come to exist — the seed generator, a support script, a future bulk
+     * import — and for a locum whose verification was REVOKED between applying
+     * and being confirmed, which the apply-time check cannot see by
+     * construction. That last case is the one that matters: it is exactly when
+     * a manager must not be told someone is checked.
+     *
+     * Checked before the state test so an unverified applicant reads as
+     * unverified rather than as some other kind of unconfirmable.
+     */
+    if (row.locum_verification !== "verified") {
+      throw new DomainError(
+        "LOCUM_NOT_VERIFIED",
+        "This locum's SAPC registration is not verified",
+        {
+          bookingId: row.booking_id,
+          locumId: row.locum_id,
+          verification: row.locum_verification,
+        },
+      );
     }
 
     if (row.booking_status !== "requested") {

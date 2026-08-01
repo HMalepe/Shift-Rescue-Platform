@@ -91,10 +91,34 @@ async function makeUserWithDeferredMessage(): Promise<string> {
 }
 
 beforeAll(async () => {
-  // Fail fast and clearly if Redis is not up, rather than hanging on the first
-  // blocking read with a timeout that says nothing.
-  const probe = new Queue(QUEUE_NAME, { connection: { url: REDIS_URL } });
-  await probe.waitUntilReady();
+  /*
+   * Fail fast and clearly if Redis is not up.
+   *
+   * `waitUntilReady()` alone does NOT do that — ioredis retries a refused
+   * connection indefinitely, so the hook simply hung until vitest's 30s
+   * timeout and reported "Hook timed out", which says nothing about the cause.
+   * That is exactly what happened the first time this environment reaped the
+   * Redis process, and the message sent me looking at the worker rather than
+   * at the box. Racing an explicit deadline turns it into a sentence someone
+   * can act on.
+   */
+  const probe = new Queue(QUEUE_NAME, {
+    connection: { url: REDIS_URL, maxRetriesPerRequest: 1 },
+  });
+
+  const ready = await Promise.race([
+    probe.waitUntilReady().then(() => true as const),
+    new Promise<false>((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]).catch(() => false as const);
+
+  if (!ready) {
+    await probe.close().catch(() => undefined);
+    throw new Error(
+      `Redis is not reachable at ${REDIS_URL}. Start it with \`bash scripts/local-redis.sh\` ` +
+        "(or `make up` if Docker is available). These tests deliberately use a real Redis.",
+    );
+  }
+
   await probe.obliterate({ force: true });
   await probe.close();
 });

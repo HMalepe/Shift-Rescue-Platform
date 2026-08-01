@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, sql } from "drizzle-orm";
 import {
+  bookings,
   favouriteLocums,
   locumProfiles,
   pharmacies,
@@ -169,5 +170,79 @@ export const shiftsRouter = router({
         .limit(input.limit);
 
       return rows;
+    }),
+
+  /**
+   * The manager's own board: every shift belonging to a pharmacy they are a
+   * member of, with how many people have applied.
+   *
+   * Scoped through `pharmacy_members` rather than `created_by`. A shift posted
+   * by a colleague who is on leave still has to be manageable, and keying the
+   * board to the creator is how a pharmacy ends up unable to confirm cover for
+   * tomorrow because the person who posted it is away.
+   *
+   * The applicant count is a grouped subquery rather than a per-row query from
+   * the page. A board of 30 shifts issuing 30 counts is the N+1 that turns a
+   * fast page into a slow one the week the pharmacy gets busy.
+   */
+  mine: managerProcedure
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(200).default(50),
+        /** Past shifts are excluded by default; the board is for what is next. */
+        includePast: z.boolean().default(false),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      const rows = await ctx.db
+        .select({
+          id: shifts.id,
+          startsAt: shifts.startsAt,
+          endsAt: shifts.endsAt,
+          hourlyRateCents: shifts.hourlyRateCents,
+          status: shifts.status,
+          visibility: shifts.visibility,
+          radiusKm: shifts.radiusKm,
+          notes: shifts.notes,
+          pharmacyId: pharmacies.id,
+          pharmacyName: pharmacies.name,
+          suburb: pharmacies.suburb,
+        })
+        .from(shifts)
+        .innerJoin(pharmacies, eq(pharmacies.id, shifts.pharmacyId))
+        .innerJoin(
+          pharmacyMembers,
+          eq(pharmacyMembers.pharmacyId, shifts.pharmacyId),
+        )
+        .where(
+          and(
+            eq(pharmacyMembers.userId, ctx.user.id),
+            ...(input.includePast ? [] : [gt(shifts.endsAt, sql`now()`)]),
+          ),
+        )
+        .orderBy(asc(shifts.startsAt))
+        .limit(input.limit);
+
+      if (rows.length === 0) return [];
+
+      const counts = await ctx.db
+        .select({
+          shiftId: bookings.shiftId,
+          applicants: count(bookings.id),
+        })
+        .from(bookings)
+        .where(
+          and(
+            inArray(
+              bookings.shiftId,
+              rows.map((row) => row.id),
+            ),
+            inArray(bookings.status, ["requested", "confirmed"]),
+          ),
+        )
+        .groupBy(bookings.shiftId);
+
+      const byShift = new Map(counts.map((row) => [row.shiftId, Number(row.applicants)]));
+      return rows.map((row) => ({ ...row, applicants: byShift.get(row.id) ?? 0 }));
     }),
 });

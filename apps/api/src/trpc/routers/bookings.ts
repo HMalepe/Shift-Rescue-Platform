@@ -2,7 +2,12 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { bookings, locumProfiles, pharmacyMembers, shifts, users } from "@locum/db";
-import { cancelBooking, confirmBooking, withIdempotency } from "@locum/core";
+import {
+  cancelBooking,
+  confirmBooking,
+  isUniqueViolation,
+  withIdempotency,
+} from "@locum/core";
 import {
   router,
   managerProcedure,
@@ -67,16 +72,39 @@ export const bookingsRouter = router({
             });
           }
 
-          const [created] = await ctx.db
-            .insert(bookings)
-            .values({
-              shiftId: input.shiftId,
-              locumId: ctx.user.id,
-              status: "requested",
-            })
-            .returning({ id: bookings.id });
+          /*
+           * `bookings_one_live_request_per_locum` is a partial unique index:
+           * one live application per locum per shift. It is the right place
+           * for that rule — a check-then-insert would race two taps against
+           * each other — but the violation it raises is a Postgres message,
+           * and without this translation it reached the user verbatim as
+           * "duplicate key value violates unique constraint
+           * bookings_one_live_request_per_locum".
+           *
+           * That is not a hypothetical: it is what the web client displayed
+           * the first time someone applied to a shift twice. A raw constraint
+           * name is unreadable to a pharmacist, and it leaks the schema.
+           */
+          try {
+            const [created] = await ctx.db
+              .insert(bookings)
+              .values({
+                shiftId: input.shiftId,
+                locumId: ctx.user.id,
+                status: "requested",
+              })
+              .returning({ id: bookings.id });
 
-          return { bookingId: created!.id };
+            return { bookingId: created!.id };
+          } catch (error) {
+            if (isUniqueViolation(error, "bookings_one_live_request_per_locum")) {
+              throw new TRPCError({
+                code: "CONFLICT",
+                message: "You have already applied for this shift",
+              });
+            }
+            throw error;
+          }
         },
       );
 

@@ -344,3 +344,44 @@ describe("GATE security.authorization — §10.1 shift visibility", () => {
     expect(body).not.toContain("passwordHash");
   });
 });
+
+describe("apply — errors a real person has to read", () => {
+  it("says you already applied instead of naming a database constraint", async () => {
+    /*
+     * Regression. `bookings_one_live_request_per_locum` is a partial unique
+     * index and the right place for the rule, but its violation used to reach
+     * the client verbatim:
+     *
+     *   duplicate key value violates unique constraint
+     *   "bookings_one_live_request_per_locum"
+     *
+     * That is what the web client rendered, to a pharmacist, the first time
+     * anyone applied to a shift twice. Found by opening the app rather than by
+     * any test — which is the point of having opened it.
+     */
+    const manager = await makeActor("manager");
+    const locum = await makeActor("locum");
+    const pharmacyId = await makePharmacy(manager.id);
+    const shiftId = await makeShift(pharmacyId, manager.id, "radius");
+
+    const first = await call(
+      "bookings.applyToShift",
+      { shiftId, idempotencyKey: crypto.randomUUID() },
+      locum.accessToken,
+    );
+    expect(first.statusCode).toBe(200);
+
+    // A different idempotency key: this is a genuine second application, not a
+    // replayed request, so idempotency does not and should not absorb it.
+    const second = await call(
+      "bookings.applyToShift",
+      { shiftId, idempotencyKey: crypto.randomUUID() },
+      locum.accessToken,
+    );
+
+    expect(second.statusCode).toBe(409);
+    const message = second.json().error.message as string;
+    expect(message).toBe("You have already applied for this shift");
+    expect(message).not.toMatch(/duplicate key|constraint|violates/i);
+  });
+});
