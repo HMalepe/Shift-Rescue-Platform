@@ -35,7 +35,8 @@
       "env": [
         "DATABASE_URL",
         "REDIS_URL",
-        "AUTH_SECRET"
+        "AUTH_SECRET",
+        "ALERT_WEBHOOK_URL"
       ],
       "cache": false
     }

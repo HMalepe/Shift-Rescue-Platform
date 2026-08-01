@@ -9,6 +9,15 @@ import {
   type DocumentScanner,
   type DocumentStorage,
 } from "@locum/core";
+import {
+  DrillError,
+  DrillGate,
+  NoopReporter,
+  WebhookReporter,
+  classify,
+  DRILL_PATH,
+  type ErrorReporter,
+} from "@locum/observability";
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
 import { registerAuthRoutes } from "./routes/auth";
 import {
@@ -23,6 +32,7 @@ export interface BuiltServer {
   readonly app: FastifyInstance;
   readonly db: Database;
   readonly client: SqlClient;
+  readonly reporter: ErrorReporter;
 }
 
 export interface ServerDeps {
@@ -33,6 +43,8 @@ export interface ServerDeps {
    */
   readonly documentStorage?: DocumentStorage;
   readonly documentScanner?: DocumentScanner;
+  /** Injected by tests so alerting can be asserted without a receiver. */
+  readonly reporter?: ErrorReporter;
 }
 
 export async function buildServer(
@@ -41,6 +53,7 @@ export async function buildServer(
 ): Promise<BuiltServer> {
   const documentStorage = deps.documentStorage ?? new InMemoryDocumentStorage();
   const documentScanner = deps.documentScanner ?? new StubDocumentScanner();
+
 
   const { db, client } = createDatabase({
     url: config.DATABASE_URL,
@@ -57,6 +70,22 @@ export async function buildServer(
     // legitimate status callback.
     bodyLimit: 1_048_576,
   });
+
+  const reporter: ErrorReporter =
+    deps.reporter ??
+    (config.ALERT_WEBHOOK_URL
+      ? new WebhookReporter({
+          url: config.ALERT_WEBHOOK_URL,
+          environment: config.ENVIRONMENT,
+          service: "api",
+          minimumSeverity: config.ALERT_MIN_SEVERITY,
+          ...(config.RELEASE !== undefined && { release: config.RELEASE }),
+          onDeliveryFailure: (error) =>
+            // The alerter failing is itself worth a log line. It cannot be
+            // alerted on, for obvious reasons.
+            app.log.error({ err: error }, "failed to deliver alert"),
+        })
+      : new NoopReporter());
 
   /*
    * Twilio posts `application/x-www-form-urlencoded`, which Fastify does not
@@ -105,6 +134,56 @@ export async function buildServer(
   app.get("/health/live", async () => ({ status: "alive" }));
 
   registerAuthRoutes(app, { db, config });
+  /*
+   * §0.1 — the deliberately broken endpoint.
+   *
+   * Registered unconditionally and gated at request time by DrillGate, rather
+   * than conditionally registered. The difference matters: a route that only
+   * exists when a flag is set cannot be tested in the configuration that
+   * production actually runs, and "is it really off?" is precisely the
+   * question worth having a test for.
+   */
+  const drillGate = new DrillGate({
+    enabled: config.DRILL_ENABLED,
+    secret: config.DRILL_SECRET,
+  });
+
+  app.post(DRILL_PATH, async (request, reply) => {
+    const presented = request.headers["x-drill-secret"];
+    const outcome = drillGate.check(
+      typeof presented === "string" ? presented : undefined,
+    );
+
+    if (!outcome.allowed) {
+      return reply.code(outcome.status).send({ error: outcome.reason });
+    }
+
+    const error = new DrillError(
+      `fired from ${config.ENVIRONMENT} at ${new Date().toISOString()}`,
+    );
+
+    app.log.error({ err: error }, "alerting drill fired");
+    reporter.report({
+      error,
+      operation: `POST ${DRILL_PATH}`,
+      severity: classify(error),
+      context: { environment: config.ENVIRONMENT, deliberate: true },
+    });
+
+    /*
+     * Flushed before replying. Everywhere else delivery is fire-and-forget so
+     * a user never waits on PagerDuty — but the entire purpose of this
+     * endpoint is to answer "did the alert go out?", and a 200 sent before the
+     * POST completed would answer it with a guess.
+     */
+    await reporter.flush(3_000);
+
+    return reply.code(500).send({
+      error: "drill_fired",
+      message: "Deliberate failure. An alert should have been delivered.",
+    });
+  });
+
   registerTwilioStatusWebhook(app, { db, config });
 
   /*
@@ -119,10 +198,24 @@ export async function buildServer(
       createContext: ({ req }: CreateFastifyContextOptions) =>
         createContext({ db, config, documentStorage, documentScanner }, req),
       onError({ error, path }: { error: Error; path?: string | undefined }) {
-        app.log.error({ err: error, path }, "tRPC handler error");
+        /*
+         * Every tRPC failure is logged; only some are alerted on. `classify`
+         * owns that decision (§0.1) — routing all of them to a pager would
+         * mean paging on every 403 and 409 the API correctly returns, and a
+         * pager that fires on correct behaviour is a pager nobody reads.
+         */
+        const severity = classify(error);
+        app.log.error({ err: error, path, severity }, "tRPC handler error");
+        if (severity !== "routine") {
+          reporter.report({
+            error,
+            operation: `trpc.${path ?? "unknown"}`,
+            severity,
+          });
+        }
       },
     },
   });
 
-  return { app, db, client };
+  return { app, db, client, reporter };
 }

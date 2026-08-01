@@ -47,6 +47,28 @@ const schema = z.object({
    * Required — there is no safe default for a signing secret.
    */
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
+
+  /**
+   * §0.1 — where alerts go. Sentry, PagerDuty Events, Opsgenie, a Slack hook:
+   * anything that accepts a JSON POST. Optional so the service boots locally
+   * without one; `assertProductionReady` refuses to let that reach production,
+   * because a service that silently drops its own alerts looks monitored and
+   * is not.
+   */
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_MIN_SEVERITY: z.enum(["routine", "warn", "page"]).default("warn"),
+  /** Commit SHA, so an alert can be tied to a deploy. */
+  RELEASE: z.string().optional(),
+
+  /**
+   * §0.1's deliberately broken endpoint. Off unless BOTH of these are set —
+   * shipping the code must not ship the hazard.
+   */
+  DRILL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+  DRILL_SECRET: z.string().min(16).optional(),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -97,6 +119,26 @@ export function assertProductionReady(
   }
   if (config.PUBLIC_BASE_URL.startsWith("http://")) {
     problems.push("PUBLIC_BASE_URL must be https in production");
+  }
+
+  /*
+   * §0.1. Booting production with no alert sink is worse than having no
+   * alerting story at all: the code paths exist, the dashboards look wired,
+   * and every incident is discarded silently.
+   */
+  if (!config.ALERT_WEBHOOK_URL) {
+    problems.push(
+      "ALERT_WEBHOOK_URL is unset — errors would be logged and never alerted on",
+    );
+  }
+
+  /*
+   * The drill is a staging tool. In production it is an endpoint whose entire
+   * function is to break, and no amount of gating makes that worth shipping to
+   * users.
+   */
+  if (config.DRILL_ENABLED) {
+    problems.push("DRILL_ENABLED must not be true in production");
   }
 
   if (problems.length > 0) {

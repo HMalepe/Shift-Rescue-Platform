@@ -160,6 +160,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§7 — 18 tests. §7 is one line in the spec, so the interpretation is written into tiers.ts rather than assumed. Four anonymisation controls, each asserted by behaviour: a distinct-rater floor, a dominance guard (a pharmacy booking the same locum weekly is one opinion), delta protection (an aggregate that refreshes on a single new rating lets the subject solve for it), and a density rule that withholds outright where the local market is too thin for any k to hide a rater. Two errors found and corrected while building: the density formula scaled the floor the opposite way to its own comment, and unratedBookingsFor prompted only the locum — collecting one-directional ratings under the word 'unified'. Both mutation-checked."
+    },
+    {
+      "gateId": "ops.alerting",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§0.1 Phase 0 exit criterion — 25 tests (17 in packages/observability, 8 in apps/api). Fired for real against the running API with an external HTTP receiver: POST /__drill/boom returned 500 and delivered a severity=page alert. Negatives confirmed live in the same run — cooldown 429, bad secret 401, unauthenticated tRPC 401, and ZERO alerts delivered for those three. Two defects found while building: DrillGate refused its own first firing (lastFiredAt=0 read as 'fired at the epoch', invisible under a real clock), and classify() paged on every tRPC UNAUTHORIZED because tRPC's own errors are not DomainErrors. Cannot move past 'executed': §15 says the gate is that a phone buzzes, which needs staging, a real webhook and someone on call."
     }
   ]
 }

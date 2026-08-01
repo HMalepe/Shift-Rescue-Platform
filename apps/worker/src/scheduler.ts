@@ -1,5 +1,6 @@
 import { Queue, QueueEvents, Worker, type ConnectionOptions, type Job } from "bullmq";
 import type { DrainDeps, DunningDeps } from "@locum/core";
+import { classify, type ErrorReporter } from "@locum/observability";
 import type { Database } from "@locum/db";
 import type { WorkerConfig } from "./config";
 import {
@@ -18,6 +19,7 @@ export interface SchedulerDeps {
   readonly log: JobLogger & { error(context: Record<string, unknown>, message: string): void };
   readonly drain: DrainDeps;
   readonly dunning: DunningDeps;
+  readonly reporter: ErrorReporter;
 }
 
 export interface RunningScheduler {
@@ -103,6 +105,20 @@ export function startScheduler(
 
   worker.on("failed", (job, error) => {
     deps.log.error({ job: job?.name, error: error.message }, "scheduled job failed");
+
+    /*
+     * §0.1 — a failing scheduled job is the archetypal silent failure. Nobody
+     * is waiting on a response, nothing turns red, and the 07:00 backlog
+     * simply does not go out. There is no user to notice on our behalf, which
+     * is exactly why this one alerts even though a failed HTTP request from
+     * the same cause might not.
+     */
+    deps.reporter.report({
+      error,
+      operation: `job.${job?.name ?? "unknown"}`,
+      severity: classify(error),
+      context: { attempts: job?.attemptsMade ?? 0 },
+    });
   });
 
   return {
@@ -111,6 +127,9 @@ export function startScheduler(
     queueEvents,
     async close() {
       await worker.close();
+      // Deliver anything reported on the way down. The interesting failures
+      // cluster just before a process exits.
+      await deps.reporter.flush(3_000);
       await queueEvents.close();
       await queue.close();
     },

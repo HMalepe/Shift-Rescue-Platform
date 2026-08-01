@@ -54,6 +54,11 @@ const schema = z.object({
 
   PAYFAST_MERCHANT_ID: z.string().optional(),
   PAYFAST_MERCHANT_KEY: z.string().optional(),
+
+  /** §0.1 — see apps/api/src/config.ts for the reasoning. */
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_MIN_SEVERITY: z.enum(["routine", "warn", "page"]).default("warn"),
+  RELEASE: z.string().optional(),
 });
 
 export type WorkerConfig = z.infer<typeof schema>;
@@ -100,6 +105,16 @@ export function assertWorkerProductionReady(
   if (runtime.usingFakePaymentProvider) {
     problems.push(
       "payment provider is the in-memory fake — dunning would settle charges that were never charged",
+    );
+  }
+
+  /*
+   * §0.1. The worker needs this MORE than the API does: an API with no
+   * alerting still has users who complain, and a worker has nobody at all.
+   */
+  if (!config.ALERT_WEBHOOK_URL) {
+    problems.push(
+      "ALERT_WEBHOOK_URL is unset — a failing scheduled job would fail silently forever",
     );
   }
 

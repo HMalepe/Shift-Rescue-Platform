@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { createDatabase } from "@locum/db";
 import * as s from "@locum/db/schema";
 import { FakePaymentProvider, FakeWhatsAppSender, sendWhatsAppMessage } from "@locum/core";
+import { RecordingReporter } from "@locum/observability";
 import { loadWorkerConfig, type WorkerConfig } from "../src/config";
 import {
   JOB_NAMES,
@@ -156,6 +157,7 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         // The drain's `now` is pushed past 07:00 so the row is due.
         drain: { sender, workerId: "test-worker", now: () => new Date(Date.now() + 86_400_000) },
         dunning: { provider: new FakePaymentProvider() },
+        reporter: new RecordingReporter(),
       },
     );
     const queue = scheduler.queue;
@@ -177,14 +179,15 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
     }
   });
 
-  it("throws on a job name it has no handler for", async () => {
+  it("fails loudly and alerts when a scheduled job has no handler", async () => {
     /*
-     * A repeatable schedule outlives the code that created it. Rename a job
-     * and the old scheduler keeps firing from Redis forever. The switch throws
-     * so that shows up as a failed job; swallowing it is how a renamed job
-     * quietly stops running for a month.
+     * §0.1 — the archetypal silent failure. Nobody is waiting on a scheduled
+     * job's response, nothing turns red, and the 07:00 backlog simply does not
+     * go out. There is no user to notice on our behalf, which is why a failing
+     * job alerts even where the same fault behind an HTTP request would not.
      */
     const log = collectingLogger();
+    const reporter = new RecordingReporter();
     const scheduler = startScheduler(
       { ...config(), REDIS_URL },
       {
@@ -192,14 +195,33 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         log,
         drain: { sender: new FakeWhatsAppSender(), workerId: "test-worker" },
         dunning: { provider: new FakePaymentProvider() },
+        reporter,
       },
     );
 
     try {
-      const job = await scheduler.queue.add("messaging.drain-deferrred", {}, { attempts: 1 });
-      await expect(job.waitUntilFinished(scheduler.queueEvents)).rejects.toThrow(
+      const job = await scheduler.queue.add("job.that.does.not.exist", {}, { attempts: 1 });
+      await job.waitUntilFinished(scheduler.queueEvents).catch(() => undefined);
+
+      // The failed handler is async relative to waitUntilFinished; give it a tick.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      expect(reporter.paging(), "a failing job must page").toHaveLength(1);
+      expect(reporter.paging()[0]!.operation).toBe("job.job.that.does.not.exist");
+
+      /*
+       * The message matters as much as the alert. An unknown job name means a
+       * repeatable schedule outlived the code that handled it — a rename that
+       * shipped without clearing the old Redis schedule. Failing loudly is how
+       * that gets noticed; swallowing it is how a renamed job quietly stops
+       * running for a month.
+       */
+      expect(String((reporter.paging()[0]!.error as Error).message)).toMatch(
         /no handler for job/,
       );
+      expect(
+        log.lines.some((line) => line.message === "scheduled job failed"),
+      ).toBe(true);
     } finally {
       await scheduler.close();
     }

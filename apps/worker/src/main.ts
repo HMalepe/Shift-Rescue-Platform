@@ -1,6 +1,7 @@
 import pino from "pino";
 import { createDatabase } from "@locum/db";
 import { FakePaymentProvider, FakeWhatsAppSender } from "@locum/core";
+import { NoopReporter, WebhookReporter, type ErrorReporter } from "@locum/observability";
 import { assertWorkerProductionReady, loadWorkerConfig } from "./config";
 import { registerSchedules, startScheduler } from "./scheduler";
 
@@ -32,6 +33,17 @@ const { db, client } = createDatabase({
 
 const workerId = `${process.env["HOSTNAME"] ?? "worker"}-${process.pid}`;
 
+const reporter: ErrorReporter = config.ALERT_WEBHOOK_URL
+  ? new WebhookReporter({
+      url: config.ALERT_WEBHOOK_URL,
+      environment: config.ENVIRONMENT,
+      service: "worker",
+      minimumSeverity: config.ALERT_MIN_SEVERITY,
+      ...(config.RELEASE !== undefined && { release: config.RELEASE }),
+      onDeliveryFailure: (error) => log.error({ error }, "failed to deliver alert"),
+    })
+  : new NoopReporter();
+
 const scheduler = startScheduler(config, {
   db,
   log,
@@ -45,6 +57,7 @@ const scheduler = startScheduler(config, {
     }),
   },
   dunning: { provider },
+  reporter,
 });
 
 await registerSchedules(scheduler.queue, config);
