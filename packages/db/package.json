@@ -13,6 +13,7 @@
     "postprocess": "tsx scripts/postprocess-migration.ts",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed/run.ts",
+    "gates": "tsx scripts/record-gates.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint src test --max-warnings=0"

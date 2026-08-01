@@ -129,6 +129,9 @@ export async function sendWhatsAppMessage(
       status: "queued",
       scheduledFor,
       wasFreeform: "false",
+      // Persisted, not recomputed later — see the column comment. The worker
+      // sends the message that was composed here, hours from now.
+      variables: [...(input.variables ?? [])],
     });
 
     return { status: "deferred", scheduledFor };

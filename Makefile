@@ -8,8 +8,14 @@ SHELL := /bin/bash
 
 DATABASE_URL ?= postgresql://locum:locum_local_dev@localhost:5432/locum_planner_dev
 AUTH_SECRET ?= local-dev-auth-secret-at-least-32-chars
+# The worker's gate tests exercise real BullMQ schedules against real Redis.
+# Mocking the queue would test the mock: the failures worth catching (a
+# repeatable schedule surviving a rename, a job firing twice per deploy) are
+# properties of what Redis remembers, not of the calling code.
+REDIS_URL ?= redis://localhost:6379
 export AUTH_SECRET
 export DATABASE_URL
+export REDIS_URL
 
 .PHONY: help
 help: ## Show available targets
@@ -47,6 +53,14 @@ generate: ## Regenerate migrations from the Drizzle schema
 .PHONY: seed
 seed: ## Seed realistic test data (§14)
 	pnpm --filter @locum/db seed
+
+.PHONY: gates
+gates: ## §12.5 — reconstruct the gate ledger in verification_runs from gates.json
+	pnpm --filter @locum/db gates
+
+.PHONY: worker
+worker: ## Run the scheduled-jobs worker (§4.4 drain, §2 dunning)
+	pnpm --filter @locum/worker start
 
 .PHONY: typecheck
 typecheck: ## Typecheck every package

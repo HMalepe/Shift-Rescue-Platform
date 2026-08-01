@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -99,6 +100,36 @@ export const whatsappMessageLog = pgTable(
     priceCents: integer("price_cents"),
 
     /**
+     * The template's positional variable bindings.
+     *
+     * Only meaningful on a deferred row (§4.4). A queued message is sent hours
+     * after the code that requested it returned, so unless the bindings are
+     * persisted here the worker knows *which* template to send but not what to
+     * put in it — and a WhatsApp template sent with the wrong number of
+     * variables is rejected by Meta, which surfaces as a silent failed send
+     * rather than an error at the original call site.
+     *
+     * Stored rather than recomputed deliberately: the shift may have been
+     * cancelled or re-priced between the deferral and the send, and the
+     * message that goes out must be the one that was composed, not a fresh
+     * render of changed state.
+     */
+    variables: jsonb("variables").$type<string[]>(),
+
+    /**
+     * Claim marker for the quiet-hours drain (§4.4).
+     *
+     * Set when a worker takes ownership of a queued row. Two workers polling
+     * the same due-set is the normal steady state under any real deployment,
+     * and without a claim both would send — a duplicate WhatsApp message costs
+     * money and reads as a bug to the recipient. The claim is taken under
+     * `FOR UPDATE SKIP LOCKED`, so a second worker steps over claimed rows
+     * instead of blocking behind them.
+     */
+    claimedAt: timestamp("claimed_at", { withTimezone: true }),
+    claimedBy: varchar("claimed_by", { length: 64 }),
+
+    /**
      * §4.4 — when a send was deferred out of quiet hours, the time it should
      * actually go out (07:00 local).
      *
@@ -122,7 +153,17 @@ export const whatsappMessageLog = pgTable(
       table.createdAt,
       table.category,
     ),
-    // The quiet-hours worker's hot query: what is due to go out now.
+    /*
+     * The quiet-hours worker's hot query: what is due to go out now.
+     *
+     * The predicate deliberately stops at `status = 'queued'` and does NOT
+     * also require `claimed_at is null`, even though the drain's hot path
+     * filters on that. Two queries need this index — "what can I claim" and
+     * "what has been claimed but never finished" (§stalled sends below) — and
+     * a predicate narrowed to unclaimed rows would serve the first and leave
+     * the second doing a sequential scan of every message ever sent. The index
+     * still self-prunes, because a drained row leaves `queued` entirely.
+     */
     index("whatsapp_message_log_due_idx")
       .on(table.scheduledFor)
       .where(sql`${table.status} = 'queued' AND ${table.scheduledFor} is not null`),

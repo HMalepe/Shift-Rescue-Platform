@@ -1,0 +1,147 @@
+{
+  "$comment": [
+    "§12.5 — the gate ledger, as data in the repository.",
+    "",
+    "This file exists because the ledger previously lived only in the dev",
+    "database, and dropping that database to test a migration erased every",
+    "row in it. §12.5's own words: 'gate status recorded only in a document",
+    "drifts from reality within days'. A ledger that lives only in a mutable",
+    "database drifts faster, and silently — nothing tells you it is gone.",
+    "",
+    "Here it is reviewable in git, reconstructible with `make gates`, and it",
+    "moves in the same commit as the code whose gate it describes. The",
+    "verification_runs table remains the queryable form; this is its source.",
+    "",
+    "status:",
+    "  passed    — the gate is closed. Requires evidenceUrl; the migration",
+    "              enforces that with a CHECK constraint, not a convention.",
+    "  executed  — the check ran green, but §15 classes the gate as G -> X or",
+    "              E, so it cannot close without a live environment or a third",
+    "              party. Recording these as 'passed' is exactly the lie the",
+    "              gate taxonomy exists to prevent.",
+    "",
+    "clock: A = generation, B = execution, C = external (§15)."
+  ],
+  "gates": [
+    {
+      "gateId": "schema.geography_roundtrip",
+      "clock": "B",
+      "status": "executed",
+      "notes": "packages/db/test/geography.test.ts — the hand-written EWKB parser round-trips against real PostGIS ST_X/ST_Y. lng/lat ordering is asserted explicitly: transposed, Johannesburg lands in Somalia."
+    },
+    {
+      "gateId": "code.concurrency",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.2 — N locums race one shift against real Postgres row locks; the partial unique index bookings_one_confirmed_per_shift is the backstop. Mutation-checked: dropping FOR UPDATE produces unique violations."
+    },
+    {
+      "gateId": "code.idempotency",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.5 — replayed keys return the cached response; a replayed key with a different body is rejected rather than silently answered."
+    },
+    {
+      "gateId": "security.auth",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — Argon2id, refresh rotation, reuse detection, session watermark invalidation."
+    },
+    {
+      "gateId": "security.auth_rate_limit",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — per-IP login limiting, tighter than the global limit."
+    },
+    {
+      "gateId": "security.authorization",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Closes the hole where confirmBooking never checked pharmacy membership. Enforced in packages/core rather than middleware, so the worker is covered too."
+    },
+    {
+      "gateId": "security.webhook_signature",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.5 — X-Twilio-Signature validated over the full signed URL; unsigned requests rejected."
+    },
+    {
+      "gateId": "security.file_upload",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — the malicious-upload fixture set. Stub scanner only detects EICAR; assertProductionReady refuses to boot production with it."
+    },
+    {
+      "gateId": "product.attendance",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§8 — check-in/check-out windows. Anti-spoofing needs physical Android hardware (§16) and is not covered here."
+    },
+    {
+      "gateId": "product.verification",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§5 — document review queue and the verified-vs-complete distinction."
+    },
+    {
+      "gateId": "product.profile",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Self-service profile editing for both sides."
+    },
+    {
+      "gateId": "product.cancellation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§9 — the R10 accountability fee rides the month's subscription rather than triggering its own transaction."
+    },
+    {
+      "gateId": "messaging.session_window",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.3 — business-initiated is always a template, with no exception for a recently-open session window."
+    },
+    {
+      "gateId": "messaging.consent",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.4 — opt-out always wins, compared by timestamp so re-opt-in is handled."
+    },
+    {
+      "gateId": "messaging.quiet_hours",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§4.4 — deferred to 07:00 SAST, never dropped. booking_cancelled deliberately ignores quiet hours."
+    },
+    {
+      "gateId": "messaging.spend_cap",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.6 — the cap alerts and does not block; a cap that suppressed booking confirmations would turn a billing anomaly into an outage."
+    },
+    {
+      "gateId": "messaging.delivery_log",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.7 — a 'sent' event with no delivery confirmation is not evidence anything reached anyone."
+    },
+    {
+      "gateId": "billing.dunning",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§2/§0.2 — decline, retry, outage and timeout-after-settlement against the fake provider. Money moves exactly once; an outage does not burn a retry attempt. §15 requires a Payfast sandbox driven into error states to close it."
+    },
+    {
+      "gateId": "messaging.quiet_hours_drain",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§4.4 — packages/core/test/gates/drain.test.ts against real Postgres: exactly-once claim under two concurrent workers, batch size honoured, opt-out re-checked at send time, failed sends terminal, stalled claims surfaced rather than reclaimed. Mutation-checked — removing `skip locked` fails the contention test with a named assertion. Executed, not passed: the fake sender proves the claim protocol, not the Twilio integration."
+    },
+    {
+      "gateId": "worker.scheduled_jobs",
+      "clock": "B",
+      "status": "executed",
+      "notes": "apps/worker/test/scheduler.test.ts against real Redis and real Postgres: a dispatched job moves a real row, an unhandled job name fails loudly, stale schedules are reconciled away on boot, re-registering does not double the cadence."
+    }
+  ]
+}

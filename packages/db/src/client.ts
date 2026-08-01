@@ -5,6 +5,24 @@ import * as schema from "./schema/index";
 export type Database = ReturnType<typeof createDatabase>["db"];
 export type SqlClient = ReturnType<typeof postgres>;
 
+/**
+ * A transaction handle, as passed to the callback of `db.transaction(...)`.
+ *
+ * Drizzle's transaction type is structurally similar to `Database` but not
+ * assignable to it, so a function that needs to run either standalone or
+ * inside a caller's transaction has to say so. Spelling it out here rather
+ * than at each call site keeps the distinction in one place — and it is a
+ * distinction worth keeping rather than erasing with `any`, because "may I be
+ * called inside someone else's transaction?" changes the locking behaviour of
+ * everything this codebase does with `FOR UPDATE`.
+ */
+export type Transaction = Parameters<
+  Parameters<Database["transaction"]>[0]
+>[0];
+
+/** Accepts either a pooled connection or an open transaction. */
+export type Executor = Database | Transaction;
+
 export interface DatabaseOptions {
   readonly url: string;
   /**
