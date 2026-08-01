@@ -43,6 +43,16 @@ export default async function BookingPage({
   const messages = await api.query<ThreadMessage[]>("messages.thread", { bookingId });
 
   /*
+   * The rating prompt appears only for a shift this person worked and has not
+   * yet rated. Asked once: a system that nags produces ratings given to make
+   * the nagging stop, which is worse than no ratings at all.
+   */
+  const pending = await api
+    .query<Array<{ bookingId: string }>>("reputation.pending")
+    .catch(() => []);
+  const pendingRating = pending.some((row) => row.bookingId === bookingId);
+
+  /*
    * Attendance is a locum-only procedure, and a manager opening this page must
    * not see a 403 for a panel they never asked for. Managers get the timesheet
    * from the shift instead.
@@ -64,6 +74,26 @@ export default async function BookingPage({
     } catch (caught) {
       const message =
         caught instanceof ApiError ? caught.message : "Could not send the message";
+      redirect(`/bookings/${bookingId}?error=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath(`/bookings/${bookingId}`);
+  }
+
+  async function rate(formData: FormData) {
+    "use server";
+    const score = Number(formData.get("score"));
+    const comment = String(formData.get("comment") ?? "").trim();
+
+    try {
+      await api.mutate("reputation.rate", {
+        bookingId,
+        score,
+        ...(comment !== "" && { comment }),
+      });
+    } catch (caught) {
+      const message =
+        caught instanceof ApiError ? caught.message : "Could not save your rating";
       redirect(`/bookings/${bookingId}?error=${encodeURIComponent(message)}`);
     }
 
@@ -141,6 +171,41 @@ export default async function BookingPage({
               Not checked in yet.
             </p>
             <CheckInForm action={checkIn} bookingId={bookingId} label="Check in" />
+          </section>
+        ) : null}
+
+        {pendingRating ? (
+          <section className="card" style={{ marginBottom: "1.5rem" }}>
+            <h2 style={{ margin: "0 0 0.5rem" }}>How did this shift go?</h2>
+            <p className="hint" style={{ marginTop: 0 }}>
+              {/*
+                §7 — asked once, plainly, and only after the shift. The other
+                side rates you on the same scale. Ratings are shown as a coarse
+                band and only once enough people have rated, so nobody can work
+                out what you said.
+              */}
+              Shown to others as a band, never as a number, and only once enough
+              people have rated to keep yours anonymous.
+            </p>
+            <form action={rate}>
+              <div className="field">
+                <label htmlFor="score">Rating</label>
+                <select id="score" name="score" defaultValue="5" required>
+                  <option value="5">5 — excellent</option>
+                  <option value="4">4 — good</option>
+                  <option value="3">3 — acceptable</option>
+                  <option value="2">2 — poor</option>
+                  <option value="1">1 — unacceptable</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="comment">Anything worth noting? (optional)</label>
+                <textarea id="comment" name="comment" maxLength={1000} />
+              </div>
+              <button type="submit" className="primary">
+                Submit rating
+              </button>
+            </form>
           </section>
         ) : null}
 

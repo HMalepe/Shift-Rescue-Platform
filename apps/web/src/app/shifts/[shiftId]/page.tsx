@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { requireRole } from "@/lib/guard";
 import { Masthead } from "@/components/Masthead";
 import { badgeToneFor, bookingStatusLabel, formatDateTime } from "@/lib/format";
+import { ReputationBadge, type Reputation } from "@/components/ReputationBadge";
 
 interface Applicant {
   bookingId: string;
@@ -41,6 +42,24 @@ export default async function ShiftApplicantsPage({
     api.query<Applicant[]>("bookings.listApplicants", { shiftId }),
     searchParams,
   ]);
+
+  /*
+   * §7 tiers, fetched per applicant. A shift has a handful of applicants, so
+   * the fan-out is bounded and parallel — but it IS an N+1, and it is the
+   * right trade only because N is small by construction. If applicant lists
+   * ever grow, this belongs in the listApplicants projection.
+   */
+  const reputations = new Map(
+    await Promise.all(
+      applicants.map(
+        async (applicant) =>
+          [
+            applicant.locumId,
+            await api.query<Reputation>("reputation.of", { userId: applicant.locumId }),
+          ] as const,
+      ),
+    ),
+  );
 
   async function confirm(formData: FormData) {
     "use server";
@@ -117,10 +136,15 @@ export default async function ShiftApplicantsPage({
                   <tr key={applicant.bookingId}>
                     <td>
                       <strong>{applicant.fullName}</strong>
-                      <div>
+                      <div className="row" style={{ gap: "0.35rem" }}>
                         <span className={badgeToneFor(applicant.verification)}>
                           {applicant.verification}
                         </span>
+                        {reputations.get(applicant.locumId) ? (
+                          <ReputationBadge
+                            reputation={reputations.get(applicant.locumId)!}
+                          />
+                        ) : null}
                       </div>
                     </td>
                     <td className="dim">

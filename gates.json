@@ -154,6 +154,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "apps/web driven end-to-end in a real Chromium against the running API and a seeded Postgres: manager signs in, posts a radius shift, a locum 30km away sees it and applies, the manager confirms, both message through the platform. Verified in the browser that localStorage, sessionStorage and document.cookie are all empty — the BFF keeps every token server-side. Two real defects found by doing this, both fixed and regression-tested: a raw Postgres constraint name reaching the user on duplicate apply, and confirmBooking never checking §5 verification."
+    },
+    {
+      "gateId": "product.reputation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§7 — 18 tests. §7 is one line in the spec, so the interpretation is written into tiers.ts rather than assumed. Four anonymisation controls, each asserted by behaviour: a distinct-rater floor, a dominance guard (a pharmacy booking the same locum weekly is one opinion), delta protection (an aggregate that refreshes on a single new rating lets the subject solve for it), and a density rule that withholds outright where the local market is too thin for any k to hide a rater. Two errors found and corrected while building: the density formula scaled the floor the opposite way to its own comment, and unratedBookingsFor prompted only the locum — collecting one-directional ratings under the word 'unified'. Both mutation-checked."
     }
   ]
 }

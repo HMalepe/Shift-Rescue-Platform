@@ -54,6 +54,11 @@ const HTTP_BY_DOMAIN_CODE: Partial<
   // §9 cancellation
   NOT_BOOKING_PARTICIPANT: "FORBIDDEN",
   BOOKING_NOT_CANCELLABLE: "CONFLICT",
+  // §7 reputation
+  INVALID_RATING: "BAD_REQUEST",
+  SHIFT_NOT_FINISHED: "CONFLICT",
+  BOOKING_NOT_RATEABLE: "CONFLICT",
+  ALREADY_RATED: "CONFLICT",
   // §6 messaging. A closed thread is a state conflict, not a permission
   // problem: the caller IS a participant, the window has simply passed.
   THREAD_CLOSED: "CONFLICT",
