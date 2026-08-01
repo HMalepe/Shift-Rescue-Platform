@@ -1,0 +1,407 @@
+import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { eq, inArray } from "drizzle-orm";
+import * as s from "@locum/db/schema";
+import {
+  FakePaymentProvider,
+  MAX_ATTEMPTS,
+  attemptCharge,
+  canPostShifts,
+  openPeriodCharge,
+  processDueCharges,
+  type DunningDeps,
+} from "../../src/index";
+import { connect } from "../helpers/fixtures";
+
+/**
+ * GATE: billing.dunning
+ *
+ * §2's state machine, exercised against the §0.2 failure modes: card decline,
+ * retry success, settlement-day outage, and timeout mid-charge.
+ *
+ * The timeout case carries the most risk and gets the most attention below.
+ * A dunning implementation that treats "no answer" as "failed" will charge a
+ * pharmacy twice for one month, which costs trust that a refund does not buy
+ * back.
+ *
+ * NOTE ON SCOPE: §15 classes this gate as G -> X. Everything here runs against
+ * a fake provider. Closing it properly needs a Payfast sandbox driven into
+ * each error state, which is externally blocked — so this proves the state
+ * machine, not the integration.
+ */
+
+const { db, client } = connect();
+const pharmacyIds: string[] = [];
+
+const JHB = { lng: 28.0473, lat: -26.2041 };
+
+function deps(provider: FakePaymentProvider, overrides: Partial<DunningDeps> = {}) {
+  return { provider, ...overrides } as DunningDeps;
+}
+
+async function makeSubscription(monthlyCents = 89_900) {
+  const [pharmacy] = await db
+    .insert(s.pharmacies)
+    .values({
+      name: `Dunning Pharmacy ${Date.now()}${Math.random()}`,
+      addressLine: "1 Road",
+      city: "Johannesburg",
+      location: JHB,
+    })
+    .returning({ id: s.pharmacies.id });
+  pharmacyIds.push(pharmacy!.id);
+
+  const [subscription] = await db
+    .insert(s.subscriptions)
+    .values({
+      pharmacyId: pharmacy!.id,
+      status: "active",
+      provider: "payfast",
+      monthlyCents,
+      currentPeriodStart: new Date(Date.now() - 10 * 86_400_000),
+      currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000),
+    })
+    .returning({ id: s.subscriptions.id });
+
+  return { pharmacyId: pharmacy!.id, subscriptionId: subscription!.id };
+}
+
+async function statusOf(subscriptionId: string) {
+  const [row] = await db
+    .select({ status: s.subscriptions.status })
+    .from(s.subscriptions)
+    .where(eq(s.subscriptions.id, subscriptionId));
+  return row?.status;
+}
+
+afterEach(async () => {
+  const ids = pharmacyIds.splice(0);
+  if (ids.length === 0) return;
+  const subs = await db
+    .select({ id: s.subscriptions.id })
+    .from(s.subscriptions)
+    .where(inArray(s.subscriptions.pharmacyId, ids));
+  const subIds = subs.map((r) => r.id);
+  if (subIds.length > 0) {
+    await db
+      .delete(s.cancellationFees)
+      .where(inArray(s.cancellationFees.subscriptionId, subIds));
+    await db
+      .delete(s.subscriptionCharges)
+      .where(inArray(s.subscriptionCharges.subscriptionId, subIds));
+    await db.delete(s.subscriptions).where(inArray(s.subscriptions.id, subIds));
+  }
+  await db.delete(s.pharmacies).where(inArray(s.pharmacies.id, ids));
+});
+
+afterAll(async () => {
+  await client.end();
+});
+
+describe("GATE billing.dunning — the happy path", () => {
+  it("collects and keeps the subscription active", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+
+    const { chargeId, amountCents } = await openPeriodCharge(db, subscriptionId);
+    expect(amountCents).toBe(89_900);
+
+    const result = await attemptCharge(db, deps(provider), chargeId);
+    expect(result.outcome).toBe("succeeded");
+    expect(await statusOf(subscriptionId)).toBe("active");
+  });
+
+  it("folds unbilled late-cancellation fees into the invoice (§9)", async () => {
+    const { subscriptionId } = await makeSubscription();
+
+    // Two R10 fees accrued during the period. §9: "R10 is added to the
+    // month's subscription" — not billed as its own transaction, which would
+    // cost more in provider fees than it collects.
+    const [pharmacy] = await db
+      .select({ id: s.subscriptions.pharmacyId })
+      .from(s.subscriptions)
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    const [manager] = await db
+      .insert(s.users)
+      .values({ role: "manager", email: `dun-${Date.now()}@t.invalid`, fullName: "M" })
+      .returning({ id: s.users.id });
+    const [locum] = await db
+      .insert(s.users)
+      .values({ role: "locum", email: `dun-l-${Date.now()}@t.invalid`, fullName: "L" })
+      .returning({ id: s.users.id });
+    await db.insert(s.locumProfiles).values({ userId: locum!.id });
+
+    const [shift] = await db
+      .insert(s.shifts)
+      .values({
+        pharmacyId: pharmacy!.id,
+        createdBy: manager!.id,
+        startsAt: new Date(Date.now() + 3_600_000),
+        endsAt: new Date(Date.now() + 5 * 3_600_000),
+        hourlyRateCents: 45_000,
+        location: JHB,
+      })
+      .returning({ id: s.shifts.id });
+
+    const created = await db
+      .insert(s.bookings)
+      .values([
+        { shiftId: shift!.id, locumId: locum!.id, status: "cancelled_by_locum" },
+      ])
+      .returning({ id: s.bookings.id });
+
+    await db.insert(s.cancellationFees).values({
+      bookingId: created[0]!.id,
+      subscriptionId,
+      amountCents: 1000,
+      noticeHours: 2,
+    });
+
+    const { amountCents, feeCount } = await openPeriodCharge(db, subscriptionId);
+    expect(feeCount).toBe(1);
+    expect(amountCents).toBe(89_900 + 1000);
+
+    // The fee is marked as billed in the same transaction, so a second run
+    // cannot pick it up again.
+    const second = await openPeriodCharge(db, subscriptionId);
+    expect(second.feeCount).toBe(0);
+    expect(second.amountCents).toBe(89_900);
+
+    // cancellation_fees references bookings with ON DELETE RESTRICT, so the
+    // fee must go first — the constraint doing its job.
+    await db
+      .delete(s.cancellationFees)
+      .where(eq(s.cancellationFees.subscriptionId, subscriptionId));
+    await db.delete(s.bookings).where(eq(s.bookings.shiftId, shift!.id));
+    await db.delete(s.shifts).where(eq(s.shifts.id, shift!.id));
+    await db.delete(s.locumProfiles).where(eq(s.locumProfiles.userId, locum!.id));
+    await db.delete(s.users).where(inArray(s.users.id, [manager!.id, locum!.id]));
+  });
+});
+
+describe("GATE billing.dunning — §0.2 card decline and the retry ladder", () => {
+  it("moves to past_due and schedules a retry, without restricting immediately", async () => {
+    const { subscriptionId, pharmacyId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    provider.scriptOutcomes({
+      kind: "decline",
+      failureCode: "insufficient_funds",
+      permanent: false,
+    });
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    const result = await attemptCharge(db, deps(provider), chargeId);
+
+    expect(result.outcome).toBe("retrying");
+    expect(result.nextRetryAt).toBeInstanceOf(Date);
+    expect(await statusOf(subscriptionId)).toBe("past_due");
+
+    /*
+     * A past_due pharmacy can still post shifts. They are inside the ladder
+     * and probably unaware anything is wrong — cutting them off over a card
+     * that expired yesterday would strand a pharmacy that needs cover.
+     */
+    expect(await canPostShifts(db, pharmacyId)).toBe(true);
+  });
+
+  it("recovers to active when a retry succeeds (§0.2 retry success)", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    provider.scriptOutcomes(
+      { kind: "decline", failureCode: "insufficient_funds", permanent: false },
+      { kind: "succeed" },
+    );
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    await attemptCharge(db, deps(provider), chargeId);
+    expect(await statusOf(subscriptionId)).toBe("past_due");
+
+    const recovered = await attemptCharge(db, deps(provider), chargeId);
+    expect(recovered.outcome).toBe("succeeded");
+    expect(await statusOf(subscriptionId)).toBe("active");
+  });
+
+  it("restricts once the ladder is exhausted, and restriction is reversible", async () => {
+    const { subscriptionId, pharmacyId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    let restrictedAlert: { subscriptionId: string } | undefined;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+      provider.scriptOutcomes({
+        kind: "decline",
+        failureCode: "insufficient_funds",
+        permanent: false,
+      });
+    }
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    const d = deps(provider, {
+      onRestricted: (c) => {
+        restrictedAlert = c;
+      },
+    });
+
+    let last;
+    for (let i = 0; i < MAX_ATTEMPTS; i += 1) {
+      last = await attemptCharge(db, d, chargeId);
+    }
+
+    expect(last?.outcome).toBe("restricted");
+    expect(await statusOf(subscriptionId)).toBe("restricted");
+    expect(restrictedAlert?.subscriptionId).toBe(subscriptionId);
+
+    // Restricted means: keep the data, keep collecting, stop posting.
+    expect(await canPostShifts(db, pharmacyId)).toBe(false);
+
+    /*
+     * And it is REVERSIBLE. A card failing is usually an expiry, not a
+     * decision to leave; paying restores full service rather than requiring a
+     * new account.
+     */
+    provider.scriptOutcomes({ kind: "succeed" });
+    const paid = await attemptCharge(db, d, chargeId);
+    expect(paid.outcome).toBe("succeeded");
+    expect(await statusOf(subscriptionId)).toBe("active");
+    expect(await canPostShifts(db, pharmacyId)).toBe(true);
+  });
+
+  it("skips the ladder for a permanently failed card", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    provider.scriptOutcomes({
+      kind: "decline",
+      failureCode: "card_expired",
+      permanent: true,
+    });
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    const result = await attemptCharge(db, deps(provider), chargeId);
+
+    // Retrying a card that cannot work wastes days in which nobody is being
+    // told to fix anything.
+    expect(result.outcome).toBe("restricted");
+    expect(await statusOf(subscriptionId)).toBe("restricted");
+  });
+});
+
+describe("GATE billing.dunning — §0.2 timeout mid-charge", () => {
+  it("NEVER double-charges when the response is lost after settlement", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+
+    // Settles at the provider, then the answer is lost — a network timeout
+    // after a successful charge.
+    provider.scriptOutcomes({ kind: "timeout_after_success" });
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+
+    const first = await attemptCharge(db, deps(provider), chargeId);
+    expect(first.outcome).toBe("unresolved");
+
+    // The retry reconciles against the provider before moving any money.
+    const second = await attemptCharge(db, deps(provider), chargeId);
+    expect(second.outcome).toBe("succeeded");
+    expect(await statusOf(subscriptionId)).toBe("active");
+
+    /*
+     * The heart of it: the money moved exactly once. A dunning implementation
+     * that treats "no answer" as "failed" bills the pharmacy twice for one
+     * month — a trust problem a refund does not undo.
+     */
+    const [charge] = await db
+      .select({ providerRef: s.subscriptionCharges.providerRef })
+      .from(s.subscriptionCharges)
+      .where(eq(s.subscriptionCharges.id, chargeId));
+    expect(provider.attemptsFor(charge!.providerRef!)).toBe(1);
+  });
+
+  it("does NOT burn a retry attempt on a provider outage", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    provider.scriptOutcomes(
+      { kind: "outage", detail: "settlement day outage" },
+      { kind: "outage", detail: "still down" },
+    );
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+
+    const first = await attemptCharge(db, deps(provider), chargeId);
+    const second = await attemptCharge(db, deps(provider), chargeId);
+
+    expect(first.outcome).toBe("unresolved");
+    expect(second.outcome).toBe("unresolved");
+
+    /*
+     * A vendor being down is not the pharmacy failing to pay. Advancing the
+     * ladder here would restrict an account that never declined — punishing a
+     * customer for our supplier's outage.
+     */
+    expect(second.attempt).toBe(1);
+    expect(await statusOf(subscriptionId)).toBe("active");
+  });
+
+  it("stays collectible after an outage clears", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+    provider.scriptOutcomes({ kind: "outage", detail: "down" }, { kind: "succeed" });
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    await attemptCharge(db, deps(provider), chargeId);
+
+    const recovered = await attemptCharge(db, deps(provider), chargeId);
+    expect(recovered.outcome).toBe("succeeded");
+  });
+});
+
+describe("GATE billing.dunning — the worker", () => {
+  it("picks up charges whose retry is due and leaves future ones alone", async () => {
+    const dueSub = await makeSubscription();
+    const futureSub = await makeSubscription();
+    const provider = new FakePaymentProvider();
+
+    const due = await openPeriodCharge(db, dueSub.subscriptionId);
+    const future = await openPeriodCharge(db, futureSub.subscriptionId);
+
+    await db
+      .update(s.subscriptionCharges)
+      .set({ status: "retrying", nextRetryAt: new Date(Date.now() - 3_600_000) })
+      .where(eq(s.subscriptionCharges.id, due.chargeId));
+    await db
+      .update(s.subscriptionCharges)
+      .set({ status: "retrying", nextRetryAt: new Date(Date.now() + 86_400_000) })
+      .where(eq(s.subscriptionCharges.id, future.chargeId));
+
+    const results = await processDueCharges(db, deps(provider));
+    const ids = results.map((r) => r.chargeId);
+
+    expect(ids).toContain(due.chargeId);
+    expect(ids).not.toContain(future.chargeId);
+  });
+
+  it("re-attempting a settled charge is a no-op", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+    await attemptCharge(db, deps(provider), chargeId);
+
+    const attemptsBefore = provider.attempts.length;
+    const repeat = await attemptCharge(db, deps(provider), chargeId);
+
+    expect(repeat.outcome).toBe("succeeded");
+    // No second call to the provider at all.
+    expect(provider.attempts.length).toBe(attemptsBefore);
+  });
+
+  it("refuses to bill a cancelled subscription", async () => {
+    const { subscriptionId } = await makeSubscription();
+    await db
+      .update(s.subscriptions)
+      .set({ status: "cancelled", cancelledAt: new Date() })
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    await expect(openPeriodCharge(db, subscriptionId)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_CANCELLED",
+    });
+  });
+});

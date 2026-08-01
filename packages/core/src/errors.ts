@@ -40,7 +40,11 @@ export type DomainErrorCode =
   | "DOCUMENT_ALREADY_REVIEWED"
   // §9 cancellation
   | "NOT_BOOKING_PARTICIPANT"
-  | "BOOKING_NOT_CANCELLABLE";
+  | "BOOKING_NOT_CANCELLABLE"
+  // §2 billing
+  | "SUBSCRIPTION_NOT_FOUND"
+  | "SUBSCRIPTION_CANCELLED"
+  | "CHARGE_NOT_FOUND";
 
 export class DomainError extends Error {
   readonly code: DomainErrorCode;

@@ -6,3 +6,4 @@ export * from "./auth/index";
 export * from "./attendance/index";
 export * from "./documents/index";
 export * from "./messaging/index";
+export * from "./billing/index";
