@@ -27,6 +27,7 @@ const NAV: Record<Role, ReadonlyArray<{ href: string; label: string }>> = {
     { href: "/bookings", label: "My bookings" },
   ],
   admin: [
+    { href: "/admin/dashboard", label: "Operations" },
     { href: "/admin/verification", label: "Verification" },
     { href: "/admin/flagged", label: "Flagged messages" },
   ],

@@ -166,6 +166,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§0.1 Phase 0 exit criterion — 25 tests (17 in packages/observability, 8 in apps/api). Fired for real against the running API with an external HTTP receiver: POST /__drill/boom returned 500 and delivered a severity=page alert. Negatives confirmed live in the same run — cooldown 429, bad secret 401, unauthenticated tRPC 401, and ZERO alerts delivered for those three. Two defects found while building: DrillGate refused its own first firing (lastFiredAt=0 read as 'fired at the epoch', invisible under a real clock), and classify() paged on every tRPC UNAUTHORIZED because tRPC's own errors are not DomainErrors. Cannot move past 'executed': §15 says the gate is that a phone buzzes, which needs staging, a real webhook and someone on call."
+    },
+    {
+      "gateId": "ops.dashboard",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.2 — the four panels the spec names, counted from rows rather than application counters. 8 tests against the seeded database plus a live render as a real MFA admin: confirmation 16.0% (183/1143), WhatsApp delivery 69.8% (88/126), settlement 62.5% (125/200), proximity query 17.5ms over 269 open shifts and 5001 located locums. Also docs/ONCALL.md — who gets paged, for what, and by when. The page exists mainly to carry the three failures that raise no exception and so can never reach the §0.1 pager: a shift that started unfilled, a deferred message past due, and a charge with no answer from the provider."
     }
   ]
 }

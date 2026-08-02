@@ -6,6 +6,7 @@ import { verificationRouter } from "./routers/verification";
 import { profileRouter } from "./routers/profile";
 import { messagesRouter } from "./routers/messages";
 import { reputationRouter } from "./routers/reputation";
+import { opsRouter } from "./routers/ops";
 
 export const appRouter = router({
   /** Cheap authenticated-or-not probe, used by clients to decide on a refresh. */
@@ -21,6 +22,7 @@ export const appRouter = router({
   profile: profileRouter,
   messages: messagesRouter,
   reputation: reputationRouter,
+  ops: opsRouter,
 });
 
 /** Consumed by apps/web and apps/mobile for end-to-end type safety. */
