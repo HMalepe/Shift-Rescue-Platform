@@ -1,0 +1,6 @@
+# Provider binaries and lock state; the mirror is per-machine (infra/README.md).
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars

@@ -65,7 +65,8 @@ apps/web                Next.js client for all three roles
 apps/mobile             Expo locum app — browse, apply, check in/out
 tools/loadtest          k6 harness (§0.3)
 tools/devdata           Local sign-ins for the seeded fixtures
-infra/                  Terraform, af-south-1                 (not started)
+infra/                  Terraform, af-south-1 — validates against the real
+                        provider schema; never planned, never applied
 ```
 
 ## Getting started

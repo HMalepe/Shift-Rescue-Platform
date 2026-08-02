@@ -72,6 +72,15 @@ gates: ## §12.5 — reconstruct the gate ledger in verification_runs from gates
 worker: ## Run the scheduled-jobs worker (§4.4 drain, §2 dunning)
 	pnpm --filter @locum/worker start
 
+.PHONY: infra-validate
+infra-validate: ## Validate the Terraform against the real AWS provider schema
+	# Not part of `make verify`: it needs the provider downloaded, which this
+	# environment can only do through a filesystem mirror (see infra/README.md).
+	# `validate` checks resource and attribute names against the provider's own
+	# schema — it does NOT plan, and nothing here has ever been applied.
+	cd infra && terraform init -backend=false -input=false >/dev/null && \
+		terraform fmt -check -recursive && terraform validate
+
 .PHONY: typecheck
 typecheck: ## Typecheck every package
 	pnpm turbo run typecheck
