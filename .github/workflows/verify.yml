@@ -38,6 +38,26 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      # §12.1's scanner, so the live half of the malware gate actually runs.
+      #
+      # Those tests are `describe.skipIf(!haveClamd)`, which means without this
+      # service they vanish silently and the run still reports green — a gate
+      # that skips is indistinguishable from a gate that passes unless someone
+      # reads the counts. The step at the end of this job asserts they ran.
+      #
+      # Signature loading takes a couple of minutes on a cold container, hence
+      # the long health retry window.
+      clamav:
+        image: clamav/clamav:1.4
+        ports:
+          - 3310:3310
+        options: >-
+          --health-cmd "clamdscan --ping 1 || exit 1"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 20
+          --health-start-period 120s
+
       redis:
         image: redis:7.4-alpine
         ports:
@@ -49,8 +69,19 @@ jobs:
           --health-retries 10
 
     env:
+      # Each package runs against its own database (see scripts/test-dbs.sh);
+      # this one exists for migrations and the PostGIS check below.
       DATABASE_URL: postgresql://locum:locum_local_dev@localhost:5432/locum_planner_test
       REDIS_URL: redis://localhost:6379
+      # The postgis image initialises `locum` AS the superuser — there is no
+      # `postgres` role in it at all, which is what the local default assumes.
+      TEST_DB_ADMIN_URL: postgresql://locum:locum_local_dev@localhost:5432/postgres
+      CLAMD_HOST: 127.0.0.1
+      CLAMD_PORT: "3310"
+      # Smaller than the local default to keep CI quick. Read by the seed, so
+      # the template built by scripts/test-dbs.sh inherits it.
+      SEED_LOCUMS: "2000"
+      SEED_PHARMACIES: "100"
 
     steps:
       - uses: actions/checkout@v4
@@ -78,13 +109,38 @@ jobs:
           psql "$DATABASE_URL" -tAc "SELECT postgis_version()" | grep -q '^3\.4' \
             || { echo "::error::PostGIS 3.4 expected"; exit 1; }
 
-      - name: Seed fixtures (§14)
-        # Smaller than the local default to keep CI quick; the full-scale run
-        # belongs to the §12.3 load-testing gate, not to every push.
-        env:
-          SEED_LOCUMS: "2000"
-          SEED_PHARMACIES: "100"
-        run: pnpm --filter @locum/db seed
-
+      # No separate seed step. `make verify` runs scripts/test-dbs.sh, which
+      # builds one seeded template and clones a database per package from it —
+      # seeding here as well would seed twice and leave the second copy unused
+      # by any test.
       - name: Verify (§0.4)
         run: make verify
+
+      # The live malware tests skip when no daemon answers, and a skipped gate
+      # reports green. Asserting the daemon is reachable from the job is what
+      # stops "the scanner service failed to start" from looking identical to
+      # "malware scanning is verified".
+      - name: Confirm the malware gate actually ran against clamd
+        run: |
+          pnpm --filter @locum/integrations exec vitest run test/clamav.test.ts \
+            --reporter=json --outputFile=/tmp/clamav.json
+          # vitest's JSON reporter uses status "skipped". It is asserted here
+          # rather than assumed: the first version of this guard checked for
+          # "pending", reported zero skips whether or not clamd was up, and so
+          # was itself the silent pass it exists to prevent. Verified against
+          # both a reachable and an unreachable daemon.
+          skipped=$(python3 -c "import json;print(sum(1 for t in json.load(open('/tmp/clamav.json'))['testResults'][0]['assertionResults'] if t['status']=='skipped'))")
+          echo "skipped: $skipped"
+          [ "$skipped" = "0" ] || { echo "::error::clamd was unreachable; the live malware gate skipped"; exit 1; }
+
+      # Belt and braces for the regression this workflow was fixed for: the
+      # per-package databases must actually have been created and cloned. If
+      # test-dbs.sh silently did nothing, every gate above would have run
+      # against whatever DATABASE_URL happened to point at, and passed.
+      - name: Confirm the per-package databases exist
+        run: |
+          for db in core api worker db; do
+            psql "$TEST_DB_ADMIN_URL" -tAc \
+              "SELECT 1 FROM pg_database WHERE datname = 'locum_test_${db}'" \
+              | grep -q 1 || { echo "::error::locum_test_${db} was never created"; exit 1; }
+          done

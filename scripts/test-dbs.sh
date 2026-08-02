@@ -39,11 +39,33 @@ PGHOST=${PGHOST:-127.0.0.1}
 TEMPLATE=${TEMPLATE_DB:-locum_test_template}
 PACKAGES=${TEST_DB_PACKAGES:-core api worker db}
 
-admin() { psql -h "$PGHOST" -p "$PGPORT" -U postgres -q -v ON_ERROR_STOP=1 "$@"; }
+# The admin connection creates and drops databases, so it must connect to a
+# maintenance database — never to one of the databases being dropped.
+#
+# Locally the superuser is `postgres`. In CI the postgis service container is
+# initialised with `locum` as superuser and there is no `postgres` role at all.
+# The first version of this script hard-coded `-U postgres` and broke CI, which
+# I did not notice because CI cannot run from here. Both are variables now, and
+# the default is the local case.
+ADMIN_URL=${TEST_DB_ADMIN_URL:-postgresql://postgres@${PGHOST}:${PGPORT}/postgres}
+OWNER=${TEST_DB_OWNER:-locum}
+OWNER_PASSWORD=${TEST_DB_OWNER_PASSWORD:-locum_local_dev}
+
+admin() { psql "$ADMIN_URL" -q -v ON_ERROR_STOP=1 "$@"; }
 
 exists() {
   admin -tAc "SELECT 1 FROM pg_database WHERE datname = '$1'" | grep -q 1
 }
+
+# Fail on the connection, not three steps later on a confusing consequence of
+# it. `exists` returns "no" for an unreachable server, which without this reads
+# as "the template is missing" and reports a build failure instead of a box
+# that is not running Postgres.
+if ! admin -tAc "SELECT 1" >/dev/null 2>&1; then
+  echo "cannot reach Postgres at $ADMIN_URL" >&2
+  echo "start it with \`bash scripts/local-pg.sh\` (or \`make up\` with Docker)" >&2
+  exit 1
+fi
 
 # The template is built once and reused. `--rebuild` forces it, which is what
 # you want after a migration or a change to the seed.
@@ -54,11 +76,12 @@ fi
 
 if ! exists "$TEMPLATE"; then
   echo "==> building $TEMPLATE (migrate + seed)"
-  admin -c "CREATE DATABASE $TEMPLATE OWNER locum"
-  DATABASE_URL="postgresql://locum:locum_local_dev@${PGHOST}:${PGPORT}/${TEMPLATE}" \
-    pnpm --filter @locum/db migrate
-  DATABASE_URL="postgresql://locum:locum_local_dev@${PGHOST}:${PGPORT}/${TEMPLATE}" \
-    pnpm --filter @locum/db seed
+  admin -c "CREATE DATABASE $TEMPLATE OWNER $OWNER"
+  template_url="postgresql://${OWNER}:${OWNER_PASSWORD}@${PGHOST}:${PGPORT}/${TEMPLATE}"
+  # SEED_LOCUMS / SEED_PHARMACIES are read from the environment by the seed
+  # itself, so CI's smaller fixture set applies here without being restated.
+  DATABASE_URL="$template_url" pnpm --filter @locum/db migrate
+  DATABASE_URL="$template_url" pnpm --filter @locum/db seed
 fi
 
 for pkg in $PACKAGES; do
@@ -68,8 +91,8 @@ for pkg in $PACKAGES; do
   admin -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
             WHERE datname IN ('$db', '$TEMPLATE') AND pid <> pg_backend_pid()" >/dev/null
   admin -c "DROP DATABASE IF EXISTS $db"
-  admin -c "CREATE DATABASE $db TEMPLATE $TEMPLATE OWNER locum"
+  admin -c "CREATE DATABASE $db TEMPLATE $TEMPLATE OWNER $OWNER"
   echo "  $db"
 done
 
-echo "test databases ready (template: $TEMPLATE)"
+echo "test databases ready (template: $TEMPLATE, owner: $OWNER)"

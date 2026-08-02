@@ -79,6 +79,17 @@ const schema = z.object({
    * documents. A bucket configured with no key fails at boot rather than
    * storing plaintext identity documents.
    */
+  /**
+   * §12.1 — the malware scanner. clamd, reached over TCP.
+   *
+   * Optional so the service boots locally on the stub, and refused in
+   * production by `assertProductionReady` for the reason §12.1 gives: an
+   * upload path that stores unscanned files is worse than no upload path,
+   * because the admin queue presents them as having passed.
+   */
+  CLAMD_HOST: z.string().optional(),
+  CLAMD_PORT: z.coerce.number().int().positive().default(3310),
+
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().default("af-south-1"),
   S3_KMS_KEY_ID: z.string().optional(),

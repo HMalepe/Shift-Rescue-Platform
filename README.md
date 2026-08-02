@@ -13,8 +13,8 @@ See `docs/` for the full product and technical specification.
 
 ## Status
 
-Phase 0 is complete except for the two items that need infrastructure or a
-third party. Phases 1 and 2 are built. **248 tests, `make verify` green.**
+Phase 0 is complete except for what needs a third party or physical hardware.
+Phases 1 and 2 are built. **317 tests, `make verify` green.**
 
 | Area | State |
 |---|---|
@@ -29,8 +29,12 @@ third party. Phases 1 and 2 are built. **248 tests, `make verify` green.**
 | POPIA access and erasure (§10) | Done |
 | Ops dashboard + on-call (§12.2) | Done |
 | Web client | Done — `apps/web` |
-| Staging environment (§0.1) | **Not started** — needs AWS credentials |
-| Vendor sandboxes (§0.2) | **Blocked** — needs Payfast and an approved Meta sender |
+| Vendor adapters (§0.2) | Done — Twilio, Payfast, S3, ClamAV, all tested against something real |
+| Malware scanning (§12.1) | Done — clamd over INSTREAM, fails closed; no "unknown" verdict exists |
+| Container image | Written — `Dockerfile`. Never built: no Docker daemon available here |
+| Terraform (§0.1) | Written and validated against the real AWS provider schema. **Never planned, never applied** |
+| Staging environment (§0.1) | **Blocked** — needs AWS credentials |
+| Vendor sandboxes (§0.2) | **Blocked** — needs a Payfast account and an approved Meta sender |
 | Mobile (Expo) | Built — `apps/mobile`. The anti-spoofing gate still needs a physical Android device (§16) |
 
 Every gate in `gates.json` is recorded as `executed`, not `passed`. §15 is
@@ -58,7 +62,8 @@ packages/db             Drizzle schema, migrations, PostGIS types, seed generato
 packages/core           Framework-agnostic domain services — booking, auth,
                         attendance, messaging, billing, reputation, privacy
 packages/observability  Error classification, alert transport, §0.1 drill
-packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast, S3
+packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast, S3,
+                        ClamAV malware scanning
 apps/api                Fastify + tRPC, Twilio webhooks, REST auth
 apps/worker             BullMQ processors — quiet-hours drain, dunning, sweeps
 apps/web                Next.js client for all three roles
@@ -78,7 +83,7 @@ make up-native     # ...or without a Docker daemon
 make migrate
 make seed          # §14 fixtures — 5,200 accounts, real metro density
 make dev-users     # give those fixtures a password, and create an admin
-make verify        # §0.4 — typecheck, lint, 248 tests. Exits non-zero on failure.
+make verify        # §0.4 — typecheck, lint, 317 tests. Exits non-zero on failure.
 ```
 
 Then, in three terminals:

@@ -237,6 +237,16 @@ locals {
     { name = "S3_REGION", value = var.region },
     { name = "S3_KMS_KEY_ID", value = aws_kms_key.main.arn },
     { name = "PUBLIC_BASE_URL", value = var.public_base_url },
+    /*
+     * localhost, because clamd runs as a sidecar in the same task.
+     *
+     * `awsvpc` gives every container in a task the same network namespace, so
+     * the scanner is reachable on the loopback and never on the VPC. That is
+     * the point: the bytes crossing this socket are ID documents, and a
+     * scanner on its own service would put them on the network to get there.
+     */
+    { name = "CLAMD_HOST", value = "127.0.0.1" },
+    { name = "CLAMD_PORT", value = "3310" },
   ]
 }
 
@@ -244,34 +254,89 @@ resource "aws_ecs_task_definition" "api" {
   family                   = "${local.name}-api"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  # 1 vCPU / 2 GiB, sized for the sidecar. clamd holds the entire signature
+  # database in memory — roughly a gigabyte — and an under-provisioned task
+  # gets OOM-killed while loading it, which presents as uploads failing for
+  # the first few minutes after every deploy.
+  cpu                = "1024"
+  memory             = "2048"
+  execution_role_arn = aws_iam_role.execution.arn
+  task_role_arn      = aws_iam_role.task.arn
 
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "ARM64"
   }
 
-  container_definitions = jsonencode([{
-    name      = "api"
-    image     = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
-    essential = true
+  container_definitions = jsonencode([
+    {
+      name      = "api"
+      image     = "${aws_ecr_repository.api.repository_url}:${var.image_tag}"
+      essential = true
 
-    portMappings = [{ containerPort = 3000, protocol = "tcp" }]
-    environment  = local.common_environment
-    secrets      = local.common_secrets
+      portMappings = [{ containerPort = 3000, protocol = "tcp" }]
+      environment  = local.common_environment
+      secrets      = local.common_secrets
 
-    logConfiguration = {
-      logDriver = "awslogs"
-      options = {
-        "awslogs-group"         = aws_cloudwatch_log_group.api.name
-        "awslogs-region"        = var.region
-        "awslogs-stream-prefix" = "api"
+      /*
+       * The API waits for clamd to be healthy before it starts.
+       *
+       * Not for correctness — the adapter fails uploads closed while the
+       * scanner is down, which is the right behaviour and is tested. This is
+       * so a rolling deploy does not put a task behind the load balancer that
+       * rejects every upload for the two minutes clamd spends loading
+       * signatures.
+       */
+      dependsOn = [{ containerName = "clamav", condition = "HEALTHY" }]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.api.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "api"
+        }
       }
-    }
-  }])
+    },
+    /*
+     * §12.1's scanner, as a sidecar rather than a service.
+     *
+     * Same task, same network namespace, so the API reaches it on 127.0.0.1
+     * and the documents never touch the VPC network to be scanned. It is also
+     * why there is no security group rule for 3310 — there is no route to it
+     * from anywhere else, by construction.
+     *
+     * `essential = true`: if the scanner dies, the task dies. The alternative
+     * is a task that stays in service with uploads failing, which looks to a
+     * user exactly like the product being broken and to the load balancer
+     * exactly like a healthy task.
+     */
+    {
+      name      = "clamav"
+      image     = "clamav/clamav:1.4"
+      essential = true
+
+      environment = [{ name = "CLAMAV_NO_MILTERD", value = "true" }]
+
+      healthCheck = {
+        command  = ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
+        interval = 15
+        timeout  = 10
+        retries  = 5
+        # Signature loading takes well over a minute on a cold container.
+        startPeriod = 180
+      }
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = aws_cloudwatch_log_group.api.name
+          "awslogs-region"        = var.region
+          "awslogs-stream-prefix" = "clamav"
+        }
+      }
+    },
+  ])
 }
 
 resource "aws_ecs_task_definition" "worker" {

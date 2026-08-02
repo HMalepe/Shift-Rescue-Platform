@@ -51,6 +51,34 @@ services:
       retries: 10
     command: ["redis-server", "--appendonly", "yes"]
 
+  # §12.1 — the malware scanner.
+  #
+  # Here for parity in the direction that actually bites: with no clamd, local
+  # development runs the EICAR-only stub, and the first time anyone exercises
+  # the real scanner is in staging. The failure modes worth rehearsing — the
+  # daemon still loading signatures on startup, a file over StreamMaxLength —
+  # only exist against a real one.
+  #
+  # It takes a minute or two to become healthy on first start while it loads
+  # the signature database, which is why the healthcheck is patient. The API
+  # fails uploads closed until then, deliberately.
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: locum-clamav
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    environment:
+      CLAMAV_NO_MILTERD: "true"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 120s
+
 volumes:
   postgres-data:
   redis-data:
+  clamav-data:

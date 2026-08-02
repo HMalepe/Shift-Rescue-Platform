@@ -1,4 +1,4 @@
-import { S3DocumentStorage } from "@locum/integrations";
+import { ClamavDocumentScanner, S3DocumentStorage } from "@locum/integrations";
 import { assertProductionReady, loadConfig } from "./config";
 import { buildServer } from "./server";
 
@@ -27,23 +27,29 @@ const documentStorage =
     : undefined;
 
 /*
- * The scanner is still the stub — §15 classes a real scanning service as
- * externally blocked, and §12.1 requires uploads to be scanned BEFORE storage.
- * So production still refuses to boot, and it now says which of the two is
- * missing rather than naming both.
+ * Real clamd when it is configured, the EICAR-only stub otherwise.
+ *
+ * §12.1 requires uploads to be scanned BEFORE storage, and `uploadDocument`
+ * awaits the scan before writing — so a scanner that throws fails the upload
+ * rather than storing an unexamined file. That is the behaviour the adapter is
+ * built around and why it has no "unknown" verdict.
  */
+const documentScanner = config.CLAMD_HOST
+  ? new ClamavDocumentScanner({ host: config.CLAMD_HOST, port: config.CLAMD_PORT })
+  : undefined;
+
 assertProductionReady(config, {
   usingStubStorage: documentStorage === undefined,
-  usingStubScanner: true,
+  usingStubScanner: documentScanner === undefined,
 });
 
-const { app, client } = await buildServer(
-  config,
-  // Spread rather than passing `documentStorage: undefined` — under
-  // exactOptionalPropertyTypes an explicit undefined is not the same as an
-  // absent property, and the absent one is what "fall back to the stub" means.
-  documentStorage ? { documentStorage } : {},
-);
+const { app, client } = await buildServer(config, {
+  // Spread rather than passing an explicit `undefined` — under
+  // exactOptionalPropertyTypes those are not the same, and the absent property
+  // is what "fall back to the stub" means.
+  ...(documentStorage ? { documentStorage } : {}),
+  ...(documentScanner ? { documentScanner } : {}),
+});
 
 /**
  * Graceful shutdown.
