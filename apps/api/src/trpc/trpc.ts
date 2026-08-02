@@ -13,6 +13,51 @@ const t = initTRPC.context<TrpcContext>().create({
         data: { ...shape.data, domainCode: cause.code },
       };
     }
+
+    /*
+     * Mask the message of anything unexpected.
+     *
+     * tRPC suppresses the stack outside development but returns the thrown
+     * error's MESSAGE verbatim, at every level. Found by booting production
+     * with the scanner down and reading what came back:
+     *
+     *   "clamd connection failed: connect ECONNREFUSED 127.0.0.1:3310"
+     *
+     * — an internal address and port, handed to any locum who uploads during
+     * an outage. It is not specific to the scanner: an S3 failure carries the
+     * bucket and key, and a Postgres error can carry a fragment of the query.
+     * Everything reaching this branch is a bug or an outage, and neither has a
+     * message written with a reader in mind.
+     *
+     * Domain errors above are exempt because their messages ARE the product's
+     * wording, deliberately. The real error is untouched here and still goes
+     * to the logger and the §0.1 reporter — this changes what the client is
+     * told, not what is recorded.
+     */
+    if (shape.data.code === "INTERNAL_SERVER_ERROR") {
+      /*
+       * The stack goes too, and not only in production.
+       *
+       * tRPC includes it whenever NODE_ENV is not "production", and the stack
+       * text CONTAINS the message — so masking one and keeping the other
+       * leaks exactly what was just hidden. The first version of this fix did
+       * that, and the regression test caught it.
+       *
+       * Stripping it unconditionally also means the guarantee does not depend
+       * on an environment variable being right. A staging box accidentally
+       * running as "test" should not be more talkative than production.
+       */
+      const { stack: _stack, ...data } = shape.data as typeof shape.data & {
+        stack?: string;
+      };
+
+      return {
+        ...shape,
+        message: "Something went wrong on our side. Please try again.",
+        data,
+      };
+    }
+
     return shape;
   },
 });

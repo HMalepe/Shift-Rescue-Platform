@@ -14,7 +14,7 @@ See `docs/` for the full product and technical specification.
 ## Status
 
 Phase 0 is complete except for what needs a third party or physical hardware.
-Phases 1 and 2 are built. **317 tests, `make verify` green.**
+Phases 1 and 2 are built. **319 tests, `make verify` green.**
 
 | Area | State |
 |---|---|
@@ -31,6 +31,7 @@ Phases 1 and 2 are built. **317 tests, `make verify` green.**
 | Web client | Done — `apps/web` |
 | Vendor adapters (§0.2) | Done — Twilio, Payfast, S3, ClamAV, all tested against something real |
 | Malware scanning (§12.1) | Done — clamd over INSTREAM, fails closed; no "unknown" verdict exists |
+| Production boot (§0.2) | Verified — `assertProductionReady` passes and the API serves with real adapters wired |
 | Container image | Written — `Dockerfile`. Never built: no Docker daemon available here |
 | Terraform (§0.1) | Written and validated against the real AWS provider schema. **Never planned, never applied** |
 | Staging environment (§0.1) | **Blocked** — needs AWS credentials |
@@ -83,7 +84,7 @@ make up-native     # ...or without a Docker daemon
 make migrate
 make seed          # §14 fixtures — 5,200 accounts, real metro density
 make dev-users     # give those fixtures a password, and create an admin
-make verify        # §0.4 — typecheck, lint, 317 tests. Exits non-zero on failure.
+make verify        # §0.4 — typecheck, lint, 319 tests. Exits non-zero on failure.
 ```
 
 Then, in three terminals:
