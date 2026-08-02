@@ -23,6 +23,7 @@ export type MessageType =
   | "subscription_payment_failed"
   | "availability_lapse"
   | "new_applicant"
+  | "shift_offer"
   // Marketing — stricter opt-in enforcement, throttled harder if muted.
   | "upgrade_prompt"
   | "referral_nudge"
@@ -100,6 +101,28 @@ export const TEMPLATES: Readonly<Record<MessageType, TemplateSpec>> = {
   },
   new_applicant: {
     templateName: "new_applicant_v1",
+    category: "utility",
+    businessInitiated: true,
+    respectsQuietHours: true,
+  },
+  /**
+   * §12.3 Phase 3 — the proactive-matching offer.
+   *
+   * Categorised UTILITY, and the choice is not a formality: this goes to a
+   * registered pharmacist about paid work matching preferences they set
+   * themselves, which is transactional rather than promotional. Submitting it
+   * as MARKETING would price every burst higher and throttle it harder when
+   * muted — and §11.2 warns that resubmitting under a different category
+   * restarts Meta's review clock, so the cost of guessing wrong is paid in
+   * days, not in an edit.
+   *
+   * It respects quiet hours. A shift starting soon is the only thing that does
+   * not, because holding it would deliver it after the shift; an offer held
+   * until 07:00 is still an offer, and one that wakes someone at 23:00 for a
+   * shift they have not accepted is how a locum opts out.
+   */
+  shift_offer: {
+    templateName: "shift_offer_v1",
     category: "utility",
     businessInitiated: true,
     respectsQuietHours: true,

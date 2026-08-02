@@ -14,7 +14,7 @@ See `docs/` for the full product and technical specification.
 ## Status
 
 Phase 0 is complete except for what needs a third party or physical hardware.
-Phases 1 and 2 are built. **319 tests, `make verify` green.**
+Phases 1 and 2 are built. **335 tests, `make verify` green.**
 
 | Area | State |
 |---|---|
@@ -26,6 +26,7 @@ Phases 1 and 2 are built. **319 tests, `make verify` green.**
 | Alerting + Phase 0 drill (§0.1) | Done — `make drill` fires it; the gate closes when a phone buzzes |
 | Booking, attendance, verification, messaging, billing | Done (§4–§9, §11) |
 | Reputation with density-aware anonymisation (§7) | Done |
+| Phase 3 proactive matching (§12.3) | Ring expansion done — escalating rings, two-sided distance, capped fan-out |
 | POPIA access and erasure (§10) | Done |
 | Ops dashboard + on-call (§12.2) | Done |
 | Web client | Done — `apps/web` |
@@ -84,7 +85,7 @@ make up-native     # ...or without a Docker daemon
 make migrate
 make seed          # §14 fixtures — 5,200 accounts, real metro density
 make dev-users     # give those fixtures a password, and create an admin
-make verify        # §0.4 — typecheck, lint, 319 tests. Exits non-zero on failure.
+make verify        # §0.4 — typecheck, lint, 335 tests. Exits non-zero on failure.
 ```
 
 Then, in three terminals:
