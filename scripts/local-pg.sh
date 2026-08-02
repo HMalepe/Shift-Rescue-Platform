@@ -52,6 +52,21 @@ if ! psql -h 127.0.0.1 -p "$PGPORT" -U postgres -lqt | cut -d'|' -f1 | grep -qw 
   psql -h 127.0.0.1 -p "$PGPORT" -U postgres -q -c "CREATE DATABASE $PGDB"
 fi
 
+# The `locum` role, matching .env.example and the Makefile's DATABASE_URL
+# default. Created here rather than left to whoever first hits it, because a
+# reaped container reinitialises the cluster and the whole test suite then
+# fails with `role "locum" does not exist` — a message that reads like a
+# configuration bug rather than a missing role in a throwaway database.
+psql -h 127.0.0.1 -p "$PGPORT" -U postgres -q -v ON_ERROR_STOP=1 <<SQL
+DO \$\$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'locum') THEN
+    CREATE ROLE locum LOGIN PASSWORD 'locum_local_dev' SUPERUSER;
+  END IF;
+END \$\$;
+SQL
+psql -h 127.0.0.1 -p "$PGPORT" -U postgres -q \
+  -c "GRANT ALL PRIVILEGES ON DATABASE $PGDB TO locum"
+
 echo "postgres ready: $DATABASE_URL"
 psql "$DATABASE_URL" -tAc "SELECT 'PostGIS ' || postgis_version()" 2>/dev/null \
   || echo "(postgis extension not yet created; migrations will create it)"
