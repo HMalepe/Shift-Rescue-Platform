@@ -9,7 +9,8 @@ import {
   pharmacyMembers,
   shifts,
 } from "@locum/db";
-import { router, managerProcedure, locumProcedure } from "../trpc";
+import { QUOTAS } from "@locum/core";
+import { router, managerProcedure, locumProcedure, quota } from "../trpc";
 
 const createShiftSchema = z
   .object({
@@ -103,6 +104,7 @@ export const shiftsRouter = router({
    * specific risk.
    */
   listOpenForMe: locumProcedure
+    .use(quota(QUOTAS.browseShifts))
     .input(
       z.object({
         limit: z.number().int().min(1).max(100).default(25),

@@ -178,6 +178,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§10 — right of access and right to erasure, neither of which existed. popiaConsentAt was a column and nothing more, in a product holding SAPC certificates, ID documents, a GPS trace per shift and message history. 14 tests. The structural guarantee: RETENTION_POLICY is asserted against every pgTable in the schema, so a new table cannot be added without a retention decision, and every table marked delete/anonymise must also appear in the export. That consistency check found a real gap while being written — auth_attempts and favourite_locums were being erased but never disclosed. Erasure deliberately RETAINS no-show and completed-shift counts: clearing them would make the erasure endpoint a §7 reputation reset (three no-shows, delete, re-register, clean record). Anonymisation not deletion, and the UI says so rather than promising a deletion the product does not perform. Legal sufficiency is E-blocked — §15 lists 5 legal opinions."
+    },
+    {
+      "gateId": "security.rate_limit",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — per-ACCOUNT quotas on browse, booking creation and data export. The existing limit was per-IP, which is right for credential stuffing and wrong for the two threats §12.1 actually names: an authenticated scraper gets a new IP by switching to mobile data, while a pharmacy group behind one NAT shares a bucket. 3 tests, and one of them is a regression: the first version of the middleware returned its own protectedProcedure and silently dropped the locum-only check from applyToShift — a manager could have applied to shifts, with nothing failing visibly. Caught by the compiler noticing locumProcedure had become unused. Postgres-backed rather than Redis so browse does not gain a second way to be down; swept hourly by the worker."
     }
   ]
 }

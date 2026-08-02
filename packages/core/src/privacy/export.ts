@@ -9,6 +9,7 @@ import {
   locumProfiles,
   messages,
   pharmacyMembers,
+  rateLimitCounters,
   ratings,
   sessions,
   users,
@@ -63,6 +64,7 @@ export interface DataExport {
   readonly activeSessions: ReadonlyArray<Record<string, unknown>>;
   readonly loginAttempts: ReadonlyArray<Record<string, unknown>>;
   readonly savedByPharmacies: ReadonlyArray<Record<string, unknown>>;
+  readonly usageCounters: ReadonlyArray<Record<string, unknown>>;
   readonly decisionsAboutYou: ReadonlyArray<Record<string, unknown>>;
   /** Plain-language note on what is held and what is withheld, and why. */
   readonly notes: ReadonlyArray<string>;
@@ -82,6 +84,7 @@ export const EXPORTED_TABLES: readonly string[] = [
   "sessions",
   "auth_attempts",
   "favourite_locums",
+  "rate_limit_counters",
   "audit_log",
 ];
 
@@ -128,6 +131,7 @@ export async function exportSubjectData(
     activeSessions,
     loginAttempts,
     savedBy,
+    usageCounters,
     decisions,
   ] = await Promise.all([
     db.select().from(locumProfiles).where(eq(locumProfiles.userId, subjectId)),
@@ -218,6 +222,16 @@ export async function exportSubjectData(
      */
     db.select().from(favouriteLocums).where(eq(favouriteLocums.locumId, subjectId)),
     /*
+     * §12.1 rate-limit counters. How often this account browsed or applied,
+     * in one-hour buckets — a coarse activity log, and therefore personal
+     * data. Disclosed for the same reason the policy erases it: the retention
+     * test refuses any table that is one without being the other.
+     */
+    db
+      .select()
+      .from(rateLimitCounters)
+      .where(eq(rateLimitCounters.subjectId, subjectId)),
+    /*
      * §12.1 logs every verification decision with the reviewing admin's
      * identity. The subject is entitled to know a decision was made about
      * them; the reviewing admin's identity is withheld, because a locum who
@@ -251,6 +265,7 @@ export async function exportSubjectData(
     activeSessions,
     loginAttempts,
     savedByPharmacies: savedBy,
+    usageCounters,
     decisionsAboutYou: decisions,
     notes: [
       "This is everything Locum Planner holds about you, across every table.",

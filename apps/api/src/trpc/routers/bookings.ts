@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { bookings, locumProfiles, pharmacyMembers, shifts, users } from "@locum/db";
 import {
+  QUOTAS,
   cancelBooking,
   confirmBooking,
   isUniqueViolation,
@@ -13,6 +14,7 @@ import {
   managerProcedure,
   locumProcedure,
   protectedProcedure,
+  quota,
 } from "../trpc";
 
 export const bookingsRouter = router({
@@ -26,6 +28,7 @@ export const bookingsRouter = router({
    * the user's first tap already earned.
    */
   applyToShift: locumProcedure
+    .use(quota(QUOTAS.applyToShift))
     .input(
       z.object({
         shiftId: z.string().uuid(),

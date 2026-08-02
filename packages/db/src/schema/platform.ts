@@ -4,6 +4,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -202,5 +203,39 @@ export const verificationRuns = pgTable(
   (table) => [
     index("verification_runs_gate_idx").on(table.gateId),
     index("verification_runs_status_idx").on(table.status),
+  ],
+);
+
+/**
+ * §12.1 — per-account rate limiting on browse and booking creation.
+ *
+ * Keyed on the ACCOUNT, not the IP. The threats §12.1 names — scraping locum
+ * personal data, abusing the notification-firing booking flow — come from
+ * authenticated users, and an authenticated user changes IP by switching to
+ * mobile data. See packages/core/src/ratelimit/quota.ts for the full argument.
+ *
+ * A fixed window, one row per (subject, action, window). Swept by the worker;
+ * a rate limiter that becomes the biggest table in the database is a
+ * self-inflicted outage.
+ */
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    subjectId: uuid("subject_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    action: varchar("action", { length: 60 }).notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    used: integer("used").notNull().default(0),
+  },
+  (table) => [
+    // The upsert target. Composite primary key rather than a surrogate id:
+    // there is exactly one row per bucket and nothing ever references it.
+    primaryKey({
+      columns: [table.subjectId, table.action, table.windowStart],
+      name: "rate_limit_counters_pkey",
+    }),
+    // The sweep's query.
+    index("rate_limit_counters_window_idx").on(table.windowStart),
   ],
 );

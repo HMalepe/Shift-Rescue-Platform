@@ -170,6 +170,27 @@ async function makeShift(
  * tRPC puts query input in the query string and mutation input in the body,
  * hence the split.
  */
+/**
+ * `remoteAddress` is distinct per caller.
+ *
+ * The API layers two limits: a global per-IP one (§12.1, credential stuffing)
+ * and a per-account quota (§12.1, scraping). Driving every test from one
+ * address means the IP limit fires first and masks whichever behaviour the
+ * test was written to check — which is exactly what happened the first time
+ * the quota tests ran: 121 browse calls exhausted the shared bucket and the
+ * NEXT test failed, on an assertion about a different actor entirely.
+ */
+let callerSeq = 0;
+const addressFor = new Map<string, string>();
+function ipFor(token: string | undefined): string {
+  const key = token ?? "anonymous";
+  if (!addressFor.has(key)) {
+    callerSeq += 1;
+    addressFor.set(key, `10.${(callerSeq >> 8) & 255}.${callerSeq & 255}.1`);
+  }
+  return addressFor.get(key)!;
+}
+
 async function call(
   path: string,
   input: Record<string, unknown>,
@@ -177,12 +198,14 @@ async function call(
   method: "POST" | "GET" = "POST",
 ): Promise<LightMyRequestResponse> {
   const headers = token ? { authorization: `Bearer ${token}` } : {};
+  const remoteAddress = ipFor(token);
 
   if (method === "GET") {
     return await server.app.inject({
       method: "GET",
       url: `/trpc/${path}?input=${encodeURIComponent(JSON.stringify(input))}`,
       headers,
+      remoteAddress,
     });
   }
   return await server.app.inject({
@@ -190,6 +213,7 @@ async function call(
     url: `/trpc/${path}`,
     payload: input,
     headers,
+    remoteAddress,
   });
 }
 
@@ -383,5 +407,62 @@ describe("apply — errors a real person has to read", () => {
     const message = second.json().error.message as string;
     expect(message).toBe("You have already applied for this shift");
     expect(message).not.toMatch(/duplicate key|constraint|violates/i);
+  });
+});
+
+describe("GATE security.rate_limit — §12.1 per-account quotas", () => {
+  it("stops an authenticated locum enumerating the shift board", async () => {
+    /*
+     * §12.1 asks for rate limiting on browse "to prevent scraping of locum
+     * personal data". The existing limit is per-IP, which is the right control
+     * for credential stuffing and the wrong one here: a scraper is already
+     * authenticated and gets a fresh IP by switching to mobile data.
+     */
+    const locum = await makeActor("locum");
+    const { QUOTAS } = await import("@locum/core");
+
+    let lastStatus = 200;
+    for (let i = 0; i < QUOTAS.browseShifts.limit + 1; i += 1) {
+      const response = await call("shifts.listOpenForMe", {}, locum.accessToken, "GET");
+      lastStatus = response.statusCode;
+      if (lastStatus !== 200) break;
+    }
+
+    expect(lastStatus, "browse must be capped per account").toBe(429);
+  });
+
+  it("keeps the role check that the quota middleware sits on top of", async () => {
+    /*
+     * Regression. The first version of `withQuota` returned its own
+     * `protectedProcedure`, which silently dropped the locum-only check from
+     * applyToShift — a manager could have applied to shifts. Downstream
+     * verification would still have refused them, so nothing visible would
+     * have broken; a rate limiter that quietly widens authorization is a very
+     * bad trade for a limit.
+     */
+    const manager = await makeActor("manager");
+    const response = await call(
+      "bookings.applyToShift",
+      { shiftId: "00000000-0000-0000-0000-000000000000", idempotencyKey: crypto.randomUUID() },
+      manager.accessToken,
+    );
+
+    expect(response.statusCode, "a manager must not reach applyToShift").toBe(403);
+  });
+
+  it("does not limit one account because another was noisy", async () => {
+    // The per-IP limit punishes a pharmacy group behind one NAT. Keying on the
+    // account is what makes the limit hit the right person.
+    const noisy = await makeActor("locum");
+    const quiet = await makeActor("locum");
+    const { QUOTAS } = await import("@locum/core");
+
+    for (let i = 0; i < QUOTAS.browseShifts.limit + 1; i += 1) {
+      const r = await call("shifts.listOpenForMe", {}, noisy.accessToken, "GET");
+      if (r.statusCode !== 200) break;
+    }
+
+    const untouched = await call("shifts.listOpenForMe", {}, quiet.accessToken, "GET");
+    expect(untouched.statusCode).toBe(200);
   });
 });

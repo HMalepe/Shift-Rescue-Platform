@@ -13,20 +13,30 @@ See `docs/` for the full product and technical specification.
 
 ## Status
 
-**Phase 0 — verification environment.** Per §0 of the spec, the environment
-where gates get passed is built *ahead of* feature work. Feature development
-has not started.
+Phase 0 is complete except for the two items that need infrastructure or a
+third party. Phases 1 and 2 are built. **248 tests, `make verify` green.**
 
-| Phase 0 item | State |
+| Area | State |
 |---|---|
-| Local parity stack (PG 16 + PostGIS 3.4 + Redis 7.4) | Done — `docker-compose.yml` |
-| Database schema + migrations | Done — applied and verified against live PostGIS |
-| Database-level invariants | Done — double-booking, evidence-required, money/window CHECKs all proven by execution |
-| Seed generator (§14) | Not started |
-| Load harness (§0.3) | Not started |
-| `make verify` (§0.4) | Partial — typecheck/lint/test wired; gates still to come |
-| Staging environment (§0.1) | Not started |
-| Vendor sandboxes (§0.2) | Not started |
+| Local parity stack (PG 16 + PostGIS 3.4 + Redis 7.4) | Done — `docker-compose.yml`, or `make up-native` without Docker |
+| Schema, migrations, database-level invariants | Done — double-booking, evidence-required and money CHECKs proven by execution |
+| Seed generator (§14) | Done — 5,200 accounts on real metro density |
+| Load harness (§0.3) | Done and run — see the measured numbers in `packages/db/src/client.ts` |
+| `make verify` (§0.4) | Done |
+| Alerting + Phase 0 drill (§0.1) | Done — `make drill` fires it; the gate closes when a phone buzzes |
+| Booking, attendance, verification, messaging, billing | Done (§4–§9, §11) |
+| Reputation with density-aware anonymisation (§7) | Done |
+| POPIA access and erasure (§10) | Done |
+| Ops dashboard + on-call (§12.2) | Done |
+| Web client | Done — `apps/web` |
+| Staging environment (§0.1) | **Not started** — needs AWS credentials |
+| Vendor sandboxes (§0.2) | **Blocked** — needs Payfast and an approved Meta sender |
+| Mobile (Expo) | **Not started** — §16 anti-spoofing needs it |
+
+Every gate in `gates.json` is recorded as `executed`, not `passed`. §15 is
+explicit that execution gates close against a live environment and external
+ones on written return; none has an evidence URL yet, and calling any of them
+`passed` would be the exact drift §12.5 exists to prevent.
 
 ## Stack
 
@@ -44,25 +54,47 @@ has not started.
 ## Repository layout
 
 ```
-packages/db       Drizzle schema, migrations, PostGIS types, seed generator
-packages/core     Framework-agnostic domain services  (planned)
-packages/contracts Shared zod schemas                 (planned)
-apps/api          Fastify + tRPC, Twilio/Payfast webhooks (planned)
-apps/worker       BullMQ processors                   (planned)
-apps/web          Next.js manager + admin console     (planned)
-apps/mobile       Expo locum app                      (planned)
-tools/loadtest    k6 harness (§0.3)                   (planned)
-infra/            Terraform, af-south-1               (planned)
+packages/db             Drizzle schema, migrations, PostGIS types, seed generator
+packages/core           Framework-agnostic domain services — booking, auth,
+                        attendance, messaging, billing, reputation, privacy
+packages/observability  Error classification, alert transport, §0.1 drill
+apps/api                Fastify + tRPC, Twilio webhooks, REST auth
+apps/worker             BullMQ processors — quiet-hours drain, dunning, sweeps
+apps/web                Next.js client for all three roles
+apps/mobile             Expo locum app                        (not started)
+tools/loadtest          k6 harness (§0.3)
+tools/devdata           Local sign-ins for the seeded fixtures
+infra/                  Terraform, af-south-1                 (not started)
 ```
 
 ## Getting started
 
 ```bash
-make install     # install workspace dependencies
-make up          # start Postgres+PostGIS and Redis
-make migrate     # apply migrations
-make verify      # §0.4 — full verification run
+make install       # install workspace dependencies
+make up            # Postgres + Redis via Docker...
+make up-native     # ...or without a Docker daemon
+make migrate
+make seed          # §14 fixtures — 5,200 accounts, real metro density
+make dev-users     # give those fixtures a password, and create an admin
+make verify        # §0.4 — typecheck, lint, 248 tests. Exits non-zero on failure.
 ```
+
+Then, in three terminals:
+
+```bash
+pnpm --filter @locum/api start     # :3000
+pnpm --filter @locum/web dev       # :3001
+make worker                        # scheduled jobs
+```
+
+`make dev-users` prints the sign-ins. The seed deliberately writes no password
+hashes — it exists to produce realistic *data* for load tests and query plans,
+and 5,200 live credentials in a fixture would be a liability — so without that
+step the seeded world is complete and impossible to log into.
+
+Useful targets: `make gates` rebuilds the §12.5 ledger from `gates.json`,
+`make loadtest` runs the §0.3 harness, `make drill` fires the §0.1 alerting
+drill against a target that has it enabled.
 
 ## Design notes worth reading before changing code
 
@@ -88,3 +120,23 @@ which are not a constant distance apart.
 
 **Money is integer cents.** Never a float, in a column pharmacies reconcile
 against payroll.
+
+**Rate limits are keyed on the account, not the IP.** (§12.1) The per-IP limit
+stays for credential stuffing, where the attacker has no account. It is the
+wrong control for scraping: a locum enumerating the shift board is already
+authenticated and gets a new IP by switching to mobile data, while a pharmacy
+group behind one NAT shares a bucket and gets locked out for someone else's
+behaviour.
+
+**Erasure keeps the no-show count.** (§10/§7) Everything identifying goes.
+The shift-history counters stay, because clearing them would make the erasure
+endpoint a reputation reset — three no-shows, delete, re-register, clean
+record. `packages/core/src/privacy/retention.ts` records a decision, with its
+reasoning, for every table; a new table without one fails the build.
+
+**A pager that fires on correct behaviour is a pager nobody reads.** (§0.1)
+`packages/observability/src/reporter.ts` decides severity in one place. Every
+403 and 409 this API correctly returns is `routine` and never alerts. The three
+worst failures here raise no exception at all — a shift that started unfilled,
+a deferred message past due, a charge with no answer from the provider — and
+live on `/admin/dashboard` instead. `docs/ONCALL.md` has the rest.

@@ -1,5 +1,5 @@
 import { initTRPC, TRPCError } from "@trpc/server";
-import { isDomainError, type DomainErrorCode } from "@locum/core";
+import { consumeQuota, isDomainError, type DomainErrorCode, type QuotaRule } from "@locum/core";
 import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create({
@@ -147,3 +147,49 @@ export const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   }
   return next({ ctx });
 });
+
+/**
+ * §12.1 — a per-ACCOUNT quota on a procedure.
+ *
+ * Layered under the global per-IP limit rather than replacing it. The two
+ * catch different attackers: the IP limit stops credential stuffing by someone
+ * with no account, and this stops an authenticated user scraping the shift
+ * board or spraying booking requests at managers' phones. An authenticated
+ * scraper defeats an IP limit by switching to mobile data; they cannot switch
+ * account as cheaply, because the account had to pass SAPC verification.
+ *
+ * Fails CLOSED on a quota error. If the counter cannot be written the limit
+ * cannot be enforced, and the endpoints this guards are the ones worth
+ * protecting — a browse outage is recoverable, a scraped database is not.
+ */
+export function quota(rule: QuotaRule) {
+  return t.middleware(async ({ ctx, next }) => {
+    /*
+     * Composed onto an existing procedure rather than returning one of its
+     * own. The first version returned `protectedProcedure.use(...)`, which
+     * silently DROPPED the role check from every procedure it was applied to —
+     * `applyToShift` went from locum-only to any-authenticated-user. The
+     * verification check downstream would still have refused a manager, so
+     * nothing would have failed visibly; a rate limiter that quietly widens
+     * authorization is a bad trade for a limit. Caught by the compiler
+     * noticing `locumProcedure` had become unused.
+     */
+    const user = (ctx as { user: { id: string } | null }).user;
+    if (!user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Authentication required" });
+    }
+
+    const result = await consumeQuota(ctx.db, rule, user.id);
+
+    if (!result.allowed) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: `Too many requests. Try again in ${Math.ceil(
+          result.resetInSeconds / 60,
+        )} minutes.`,
+      });
+    }
+
+    return next();
+  });
+}

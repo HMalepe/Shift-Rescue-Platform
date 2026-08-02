@@ -174,6 +174,12 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     because: "Hashes and response bodies, swept on expiry. No identity.",
   },
   {
+    table: "rate_limit_counters",
+    action: "delete",
+    because:
+      "Counts of how often an account browsed or applied, keyed to that account. Deleted outright — the counters exist to shape behaviour in a one-hour window and are worthless the moment it closes. They are also swept independently by the worker, so erasure only removes them sooner.",
+  },
+  {
     table: "verification_runs",
     action: "retain",
     because: "§12.5 gate ledger. Engineering records, no user data.",

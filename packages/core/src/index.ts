@@ -10,3 +10,4 @@ export * from "./billing/index";
 export * from "./reputation/index";
 export * from "./ops/index";
 export * from "./privacy/index";
+export * from "./ratelimit/index";

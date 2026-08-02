@@ -8,6 +8,7 @@ import {
   runDrainDeferredMessages,
   runProcessDueCharges,
   runReportStalledSends,
+  runSweepQuotas,
   type JobContext,
   type JobLogger,
 } from "./jobs";
@@ -81,6 +82,8 @@ export function startScheduler(
           return runProcessDueCharges(ctx, deps.dunning, config.DUNNING_BATCH_SIZE);
         case JOB_NAMES.reportStalledSends:
           return runReportStalledSends(ctx);
+        case JOB_NAMES.sweepQuotas:
+          return runSweepQuotas(ctx);
         default:
           /*
            * Thrown, not logged and swallowed. An unknown job name means a
@@ -146,6 +149,9 @@ export function desiredSchedules(
     // Stall triage is diagnostic, not operational; a fifth of the drain
     // cadence is plenty and keeps it out of the drain's way.
     { name: JOB_NAMES.reportStalledSends, every: config.DRAIN_INTERVAL_MS * 5 },
+    // Housekeeping. Hourly is far more often than needed for a 48h retention,
+    // and it is one indexed DELETE.
+    { name: JOB_NAMES.sweepQuotas, every: 3_600_000 },
   ];
 }
 

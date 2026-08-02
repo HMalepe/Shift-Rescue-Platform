@@ -121,6 +121,21 @@ export async function eraseSubject(
       rows: count(await tx.delete(documents).where(eq(documents.userId, subjectId))),
     });
 
+    /*
+     * Rate-limit counters. Added when the retention-policy test refused a
+     * schema containing a table nobody had decided about — which is the
+     * mechanism working, and cheaper than finding out from a regulator.
+     */
+    affected.push({
+      table: "rate_limit_counters",
+      action: "delete",
+      rows: count(
+        await tx.execute(
+          sql`delete from rate_limit_counters where subject_id = ${subjectId}::uuid`,
+        ),
+      ),
+    });
+
     affected.push({
       table: "favourite_locums",
       action: "delete",

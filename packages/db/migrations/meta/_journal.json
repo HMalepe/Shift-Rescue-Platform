@@ -43,6 +43,13 @@
       "when": 1785666272926,
       "tag": "0005_clammy_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785670887559,
+      "tag": "0006_deep_mesmero",
+      "breakpoints": true
     }
   ]
 }

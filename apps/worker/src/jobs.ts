@@ -3,6 +3,7 @@ import {
   findStalledSends,
   pendingBacklogSize,
   processDueCharges,
+  sweepExpiredQuotas,
   type DrainDeps,
   type DunningDeps,
 } from "@locum/core";
@@ -29,6 +30,7 @@ export const JOB_NAMES = {
   drainDeferredMessages: "messaging.drain-deferred",
   processDueCharges: "billing.process-due-charges",
   reportStalledSends: "messaging.report-stalled",
+  sweepQuotas: "ratelimit.sweep",
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -123,4 +125,19 @@ export async function runReportStalledSends(ctx: JobContext): Promise<void> {
     },
     "deferred sends claimed but never completed — needs a human to check Twilio before re-sending",
   );
+}
+
+/**
+ * §12.1 — drops rate-limit counters for windows that have closed.
+ *
+ * One row per active user per action per window, forever, unless something
+ * removes them. A rate limiter that grows into the largest table in the
+ * database is a self-inflicted outage, and an unusually annoying one because
+ * the mechanism protecting the service is the thing taking it down.
+ */
+export async function runSweepQuotas(ctx: JobContext): Promise<void> {
+  const removed = await sweepExpiredQuotas(ctx.db);
+  if (removed > 0) {
+    ctx.log.info({ removed }, "swept expired rate-limit counters");
+  }
 }

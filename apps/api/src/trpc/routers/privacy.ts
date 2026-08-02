@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { eraseSubject, exportSubjectData } from "@locum/core";
-import { router, protectedProcedure, adminProcedure } from "../trpc";
+import { QUOTAS, eraseSubject, exportSubjectData } from "@locum/core";
+import { router, protectedProcedure, adminProcedure, quota } from "../trpc";
 
 /**
  * §10 — POPIA's access and erasure rights.
@@ -19,9 +19,9 @@ import { router, protectedProcedure, adminProcedure } from "../trpc";
  */
 export const privacyRouter = router({
   /** Everything held about the caller. */
-  exportMine: protectedProcedure.query(async ({ ctx }) =>
-    exportSubjectData(ctx.db, ctx.user.id),
-  ),
+  exportMine: protectedProcedure
+    .use(quota(QUOTAS.dataExport))
+    .query(async ({ ctx }) => exportSubjectData(ctx.db, ctx.user.id)),
 
   /**
    * Erase the caller's own account.
