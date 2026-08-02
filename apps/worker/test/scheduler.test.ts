@@ -50,6 +50,28 @@ function config(overrides: Partial<WorkerConfig> = {}): WorkerConfig {
 
 const createdUserIds: string[] = [];
 
+/**
+ * Waits until a condition holds, instead of sleeping for a guessed interval.
+ *
+ * The handler's failure path runs after `waitUntilFinished` settles, and the
+ * original code allowed it a flat 250ms. That is a guess about how fast this
+ * machine is, and a guess that is wrong roughly one run in six turns a real
+ * gate into a coin flip. Polling costs nothing when the condition is already
+ * true and fails with a stated reason when it never becomes true.
+ */
+async function eventually(
+  predicate: () => boolean,
+  reason: string,
+  timeoutMs = 5_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`timed out after ${timeoutMs}ms waiting for: ${reason}`);
+}
+
 function collectingLogger() {
   const lines: Array<{ level: string; context: Record<string, unknown>; message: string }> = [];
   return {
@@ -163,6 +185,15 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
     const queue = scheduler.queue;
 
     try {
+      /*
+       * `waitUntilFinished` listens through QueueEvents, and a QueueEvents
+       * instance subscribes to Redis ASYNCHRONOUSLY. Add a job before that
+       * subscription is live and the completion event is published to nobody:
+       * the promise never settles and the test hangs until vitest's 30s
+       * timeout, reporting "Test timed out" — which names the symptom and
+       * nothing else. Waiting for readiness first is the whole fix.
+       */
+      await scheduler.queueEvents.waitUntilReady();
       const job = await queue.add(JOB_NAMES.drainDeferredMessages, {});
       await job.waitUntilFinished(scheduler.queueEvents);
 
@@ -200,11 +231,18 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
     );
 
     try {
+      // See the note in the previous test: QueueEvents subscribes to Redis
+      // asynchronously, and a job that finishes first publishes to nobody.
+      await scheduler.queueEvents.waitUntilReady();
       const job = await scheduler.queue.add("job.that.does.not.exist", {}, { attempts: 1 });
       await job.waitUntilFinished(scheduler.queueEvents).catch(() => undefined);
 
-      // The failed handler is async relative to waitUntilFinished; give it a tick.
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      // The failure path runs after waitUntilFinished settles. Polled rather
+      // than slept through, so this does not depend on how fast the box is.
+      await eventually(
+        () => reporter.paging().length > 0,
+        "the failing job to page",
+      );
 
       expect(reporter.paging(), "a failing job must page").toHaveLength(1);
       expect(reporter.paging()[0]!.operation).toBe("job.job.that.does.not.exist");

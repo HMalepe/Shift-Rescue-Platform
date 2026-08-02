@@ -80,8 +80,17 @@ typecheck: ## Typecheck every package
 lint: ## Lint every package
 	pnpm turbo run lint
 
+.PHONY: test-dbs
+test-dbs: ## Give each package its own test database, cloned from a seeded template
+	bash scripts/test-dbs.sh
+
 .PHONY: test
 test: ## Run the test suite
+	# Packages run in parallel and used to share one database, which made the
+	# §4.4 drain gates claim each other's rows about one run in three. See
+	# scripts/test-dbs.sh for the diagnosis; it is cheap (template clone) and
+	# idempotent, so it runs every time rather than being a step to remember.
+	bash scripts/test-dbs.sh
 	pnpm turbo run test
 
 ##@ Gates
