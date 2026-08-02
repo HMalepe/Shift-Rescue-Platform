@@ -47,6 +47,9 @@ importers:
       '@locum/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@locum/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@locum/observability':
         specifier: workspace:*
         version: link:../../packages/observability

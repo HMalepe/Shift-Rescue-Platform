@@ -154,6 +154,28 @@ describe("GATE ops.alerting — production refuses to boot unmonitored", () => {
     ).toThrow(/ALERT_WEBHOOK_URL/);
   });
 
+  it("names the stubbed scanner even when storage is real", async () => {
+    /*
+     * These were one flag until the S3 adapter landed. Wiring S3 would have
+     * satisfied it, reporting the whole document pipeline production-ready
+     * while nothing scanned a single upload — and §12.1 requires scanning
+     * BEFORE storage, so that is the half that must not be silently switched
+     * off by fixing the other half.
+     */
+    const { assertProductionReady } = await import("../src/config");
+    expect(() =>
+      assertProductionReady(
+        config({
+          NODE_ENV: "production",
+          ALERT_WEBHOOK_URL: "https://alerts.example.com/hook",
+          PUBLIC_BASE_URL: "https://api.example.com",
+          TWILIO_AUTH_TOKEN: "token",
+        }),
+        { usingStubStorage: false, usingStubScanner: true },
+      ),
+    ).toThrow(/StubDocumentScanner/);
+  });
+
   it("refuses production with the drill enabled", async () => {
     const { assertProductionReady } = await import("../src/config");
     expect(() =>

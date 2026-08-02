@@ -69,6 +69,21 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
   DRILL_SECRET: z.string().min(16).optional(),
+
+  /**
+   * §5/§10 — where verification documents live.
+   *
+   * All optional so the service boots locally on the in-memory store, but the
+   * KMS key is not separately optional in spirit: the S3 adapter's constructor
+   * refuses without it, because these objects are SAPC certificates and ID
+   * documents. A bucket configured with no key fails at boot rather than
+   * storing plaintext identity documents.
+   */
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().default("af-south-1"),
+  S3_KMS_KEY_ID: z.string().optional(),
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -91,8 +106,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 export function assertProductionReady(
   config: Config,
   runtime: {
-    /** True when the in-memory storage / stub scanner are in use. */
-    readonly usingStubDocumentDeps?: boolean;
+    /**
+     * These were ONE flag until the S3 adapter landed, and that was fine only
+     * while both were stubbed. They are separate facts now: storage can be
+     * real while the scanner is still the EICAR stub, and a single flag would
+     * be satisfied by wiring S3 — reporting the whole document pipeline as
+     * production-ready while nothing is scanning uploads. §12.1 requires
+     * scanning before storage, so the check that matters is the one that would
+     * have been silently switched off.
+     */
+    readonly usingStubStorage?: boolean;
+    readonly usingStubScanner?: boolean;
   } = {},
 ): void {
   if (config.NODE_ENV !== "production") return;
@@ -106,9 +130,14 @@ export function assertProductionReady(
    * feature at all, because the admin queue would present unscanned documents
    * as though they had passed.
    */
-  if (runtime.usingStubDocumentDeps) {
+  if (runtime.usingStubStorage) {
     problems.push(
-      "document storage/scanner are the in-memory stubs — wire real S3 and a malware scanner before production",
+      "document storage is InMemoryDocumentStorage — set S3_BUCKET/S3_KMS_KEY_ID to wire the real adapter",
+    );
+  }
+  if (runtime.usingStubScanner) {
+    problems.push(
+      "document scanner is StubDocumentScanner, which detects only EICAR — wire a real malware scanner before production (§12.1)",
     );
   }
 

@@ -58,7 +58,7 @@ packages/db             Drizzle schema, migrations, PostGIS types, seed generato
 packages/core           Framework-agnostic domain services — booking, auth,
                         attendance, messaging, billing, reputation, privacy
 packages/observability  Error classification, alert transport, §0.1 drill
-packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast
+packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast, S3
 apps/api                Fastify + tRPC, Twilio webhooks, REST auth
 apps/worker             BullMQ processors — quiet-hours drain, dunning, sweeps
 apps/web                Next.js client for all three roles
