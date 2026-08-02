@@ -31,7 +31,7 @@ third party. Phases 1 and 2 are built. **248 tests, `make verify` green.**
 | Web client | Done — `apps/web` |
 | Staging environment (§0.1) | **Not started** — needs AWS credentials |
 | Vendor sandboxes (§0.2) | **Blocked** — needs Payfast and an approved Meta sender |
-| Mobile (Expo) | **Not started** — §16 anti-spoofing needs it |
+| Mobile (Expo) | Built — `apps/mobile`. The anti-spoofing gate still needs a physical Android device (§16) |
 
 Every gate in `gates.json` is recorded as `executed`, not `passed`. §15 is
 explicit that execution gates close against a live environment and external
@@ -61,7 +61,7 @@ packages/observability  Error classification, alert transport, §0.1 drill
 apps/api                Fastify + tRPC, Twilio webhooks, REST auth
 apps/worker             BullMQ processors — quiet-hours drain, dunning, sweeps
 apps/web                Next.js client for all three roles
-apps/mobile             Expo locum app                        (not started)
+apps/mobile             Expo locum app — browse, apply, check in/out
 tools/loadtest          k6 harness (§0.3)
 tools/devdata           Local sign-ins for the seeded fixtures
 infra/                  Terraform, af-south-1                 (not started)

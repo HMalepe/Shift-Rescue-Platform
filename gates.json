@@ -184,6 +184,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§12.1 — per-ACCOUNT quotas on browse, booking creation and data export. The existing limit was per-IP, which is right for credential stuffing and wrong for the two threats §12.1 actually names: an authenticated scraper gets a new IP by switching to mobile data, while a pharmacy group behind one NAT shares a bucket. 3 tests, and one of them is a regression: the first version of the middleware returned its own protectedProcedure and silently dropped the locum-only check from applyToShift — a manager could have applied to shifts, with nothing failing visibly. Caught by the compiler noticing locumProcedure had become unused. Postgres-backed rather than Redis so browse does not gain a second way to be down; swept hourly by the worker."
+    },
+    {
+      "gateId": "product.anti_spoofing",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§8/§16 — apps/mobile, the reason Expo was chosen on day one. 9 tests over the pure signal logic in src/lib/attendance.ts. THIS GATE CANNOT CLOSE HERE and §16 says so directly: 'At least one physical Android device with a mock-location app installed and active. Emulator confirmation is explicitly insufficient — the signals being captured are precisely the ones an emulator misrepresents.' What is proven is the half hardware does not decide: Android's mocked flag is forwarded, iOS sends NOTHING rather than a reassuring false (the API distinguishes absent from false, and 'unknowable' recorded as 'clean' would make an iPhone record look better-evidenced than an honest Android one), no distance is computed on the device, and anomalies annotate without ever refusing a check-in. location.ts is deliberately thin so the untestable surface is as small as possible."
     }
   ]
 }
