@@ -190,6 +190,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§8/§16 — apps/mobile, the reason Expo was chosen on day one. 9 tests over the pure signal logic in src/lib/attendance.ts. THIS GATE CANNOT CLOSE HERE and §16 says so directly: 'At least one physical Android device with a mock-location app installed and active. Emulator confirmation is explicitly insufficient — the signals being captured are precisely the ones an emulator misrepresents.' What is proven is the half hardware does not decide: Android's mocked flag is forwarded, iOS sends NOTHING rather than a reassuring false (the API distinguishes absent from false, and 'unknowable' recorded as 'clean' would make an iPhone record look better-evidenced than an honest Android one), no distance is computed on the device, and anomalies annotate without ever refusing a check-in. location.ts is deliberately thin so the untestable surface is as small as possible."
+    },
+    {
+      "gateId": "messaging.twilio_adapter",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.1 — the real WhatsAppSender. 11 tests against a real HTTP server standing in for Twilio: exact request shape, Basic auth, ContentVariables in Meta's one-based positional form, StatusCallback present, error classification (429/5xx/408 transient, 63016 permanent), timeout, and refusal to send a template with no approved Content SID rather than falling back to free-form. Found that FakeWhatsAppSender had been LYING: it returns priceCents on every send, and Twilio returns price:null on accept and bills later on the status callback — any code assuming a send-time price would pass every test and report zero §11.6 spend in production. Also: Twilio reports price as a negative decimal, which stored verbatim makes daily spend a growing negative number and the cap never fires. Cannot close — §15 lists the sender and template approval as externally blocked, so no message here has ever reached a phone."
     }
   ]
 }

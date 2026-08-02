@@ -1,6 +1,7 @@
 import pino from "pino";
 import { createDatabase } from "@locum/db";
-import { FakePaymentProvider, FakeWhatsAppSender } from "@locum/core";
+import { FakePaymentProvider, FakeWhatsAppSender, type WhatsAppSender } from "@locum/core";
+import { TwilioWhatsAppSender } from "@locum/integrations";
 import { NoopReporter, WebhookReporter, type ErrorReporter } from "@locum/observability";
 import { assertWorkerProductionReady, loadWorkerConfig } from "./config";
 import { registerSchedules, startScheduler } from "./scheduler";
@@ -18,11 +19,32 @@ const log = pino({ level: config.NODE_ENV === "production" ? "info" : "debug" })
  *
  * When the real adapters land, construct them here and drop the flags.
  */
-const sender = new FakeWhatsAppSender();
+/*
+ * The real sender is used the moment it is fully configured. "Fully" is the
+ * operative word: a partial Twilio configuration silently falling back to the
+ * fake would be the worst of both worlds — production-looking config, and
+ * every message marked sent while nothing arrives.
+ */
+const twilioConfigured =
+  config.TWILIO_ACCOUNT_SID !== undefined &&
+  config.TWILIO_AUTH_TOKEN !== undefined &&
+  config.TWILIO_WHATSAPP_FROM !== undefined &&
+  config.TWILIO_STATUS_CALLBACK_URL !== undefined;
+
+const sender: WhatsAppSender = twilioConfigured
+  ? new TwilioWhatsAppSender({
+      accountSid: config.TWILIO_ACCOUNT_SID!,
+      authToken: config.TWILIO_AUTH_TOKEN!,
+      fromNumber: config.TWILIO_WHATSAPP_FROM!,
+      statusCallbackUrl: config.TWILIO_STATUS_CALLBACK_URL!,
+      contentSids: config.TWILIO_CONTENT_SIDS,
+    })
+  : new FakeWhatsAppSender();
+
 const provider = new FakePaymentProvider();
 
 assertWorkerProductionReady(config, {
-  usingFakeSender: true,
+  usingFakeSender: !twilioConfigured,
   usingFakePaymentProvider: true,
 });
 

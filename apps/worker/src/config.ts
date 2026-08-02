@@ -51,6 +51,26 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_WHATSAPP_FROM: z.string().optional(),
+  /** §11.5 — where delivery receipts are posted back. */
+  TWILIO_STATUS_CALLBACK_URL: z.string().url().optional(),
+  /**
+   * §11.2 — template name to Twilio Content SID, as JSON.
+   *
+   * Configuration rather than code: the SIDs do not exist until Meta approves
+   * each template, which §15 lists as externally blocked. Hard-coding them
+   * would mean a deploy for every approval.
+   */
+  TWILIO_CONTENT_SIDS: z
+    .string()
+    .default("{}")
+    .transform((raw, ctx) => {
+      try {
+        return JSON.parse(raw) as Record<string, string>;
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "must be valid JSON" });
+        return z.NEVER;
+      }
+    }),
 
   PAYFAST_MERCHANT_ID: z.string().optional(),
   PAYFAST_MERCHANT_KEY: z.string().optional(),
