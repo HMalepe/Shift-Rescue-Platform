@@ -55,6 +55,19 @@ export const users = pgTable(
     popiaConsentAt: timestamp("popia_consent_at", { withTimezone: true }),
 
     /**
+     * §10 — set when the right to erasure has been exercised.
+     *
+     * A tombstone rather than a deleted row: every booking, rating and
+     * attendance record in the system points here by foreign key, and those
+     * belong to the pharmacy as much as to the person. The row survives with
+     * its identifying columns overwritten — see packages/core/src/privacy.
+     *
+     * Nullable and indexed so listings can exclude erased subjects cheaply. A
+     * boolean would have lost WHEN, which is the part a regulator asks about.
+     */
+    erasedAt: timestamp("erased_at", { withTimezone: true }),
+
+    /**
      * §11.4 — Meta requires a WhatsApp opt-in that is *separate* from POPIA
      * consent, with a working STOP path. Kept as two nullable timestamps
      * rather than one boolean so the audit trail shows when each happened.

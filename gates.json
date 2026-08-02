@@ -172,6 +172,12 @@
       "clock": "B",
       "status": "executed",
       "notes": "§12.2 — the four panels the spec names, counted from rows rather than application counters. 8 tests against the seeded database plus a live render as a real MFA admin: confirmation 16.0% (183/1143), WhatsApp delivery 69.8% (88/126), settlement 62.5% (125/200), proximity query 17.5ms over 269 open shifts and 5001 located locums. Also docs/ONCALL.md — who gets paged, for what, and by when. The page exists mainly to carry the three failures that raise no exception and so can never reach the §0.1 pager: a shift that started unfilled, a deferred message past due, and a charge with no answer from the provider."
+    },
+    {
+      "gateId": "privacy.popia",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§10 — right of access and right to erasure, neither of which existed. popiaConsentAt was a column and nothing more, in a product holding SAPC certificates, ID documents, a GPS trace per shift and message history. 14 tests. The structural guarantee: RETENTION_POLICY is asserted against every pgTable in the schema, so a new table cannot be added without a retention decision, and every table marked delete/anonymise must also appear in the export. That consistency check found a real gap while being written — auth_attempts and favourite_locums were being erased but never disclosed. Erasure deliberately RETAINS no-show and completed-shift counts: clearing them would make the erasure endpoint a §7 reputation reset (three no-shows, delete, re-register, clean record). Anonymisation not deletion, and the UI says so rather than promising a deletion the product does not perform. Legal sufficiency is E-blocked — §15 lists 5 legal opinions."
     }
   ]
 }

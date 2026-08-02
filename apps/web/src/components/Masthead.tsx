@@ -46,6 +46,10 @@ export function Masthead({ role }: { role: Role }) {
               {item.label}
             </Link>
           ))}
+          {/* §10 — reachable from every page, for every role. A privacy
+              right behind a support email is a right most people never
+              exercise. */}
+          <Link href="/privacy">Your data</Link>
           <form action={signOutAction}>
             <button type="submit" className="quiet">
               Sign out

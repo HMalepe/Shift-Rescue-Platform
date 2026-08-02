@@ -36,6 +36,13 @@
       "when": 1785593213912,
       "tag": "0004_curvy_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785666272926,
+      "tag": "0005_clammy_masque",
+      "breakpoints": true
     }
   ]
 }

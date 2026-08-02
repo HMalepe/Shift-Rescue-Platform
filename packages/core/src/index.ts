@@ -9,3 +9,4 @@ export * from "./messaging/index";
 export * from "./billing/index";
 export * from "./reputation/index";
 export * from "./ops/index";
+export * from "./privacy/index";

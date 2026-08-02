@@ -43,6 +43,9 @@ export type DomainErrorCode =
   | "BOOKING_NOT_CANCELLABLE"
   // §6 messaging
   | "THREAD_CLOSED"
+  // §10 privacy
+  | "SUBJECT_NOT_FOUND"
+  | "ALREADY_ERASED"
   // §7 reputation
   | "INVALID_RATING"
   | "SHIFT_NOT_FINISHED"
