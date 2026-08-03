@@ -7,6 +7,7 @@ import {
   locumProfiles,
   messages,
   pharmacyMembers,
+  shiftOffers,
   ratings,
   sessions,
   users,
@@ -136,6 +137,20 @@ export async function eraseSubject(
       ),
     });
 
+    /*
+     * §12.3 offers. Deleted, not retained: an offer proves only that we
+     * messaged this person, and a list of unanswered approaches to someone who
+     * asked to be erased is precisely the residue §10 removes. It carries no
+     * §7 signal — reputation counts completed shifts and no-shows, never
+     * offers declined — so this cannot become a reputation reset.
+     */
+    affected.push({
+      table: "shift_offers",
+      action: "delete",
+      rows: count(
+        await tx.delete(shiftOffers).where(eq(shiftOffers.locumId, subjectId)),
+      ),
+    });
     affected.push({
       table: "favourite_locums",
       action: "delete",

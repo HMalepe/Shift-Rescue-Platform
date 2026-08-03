@@ -5,6 +5,7 @@ import {
   verifyAccessToken,
   type DocumentScanner,
   type DocumentStorage,
+  type WhatsAppSender,
 } from "@locum/core";
 import type { Config } from "../config";
 
@@ -24,6 +25,15 @@ export interface TrpcContext {
   /** Injected so the verification workflow is testable without S3/ClamAV. */
   readonly documentStorage: DocumentStorage;
   readonly documentScanner: DocumentScanner;
+  /**
+   * §12.3 — the API sends WhatsApp now.
+   *
+   * It did not before this: every message came from the worker. The Phase 3
+   * "Looking for a Locum" toggle fires ring 0 inline, because the spec's whole
+   * framing is "the instant a manager toggles" — so the sender has to be here,
+   * and `assertProductionReady` has to refuse the fake here too.
+   */
+  readonly whatsappSender: WhatsAppSender;
 }
 
 export interface ContextDeps {
@@ -31,6 +41,7 @@ export interface ContextDeps {
   readonly config: Config;
   readonly documentStorage: DocumentStorage;
   readonly documentScanner: DocumentScanner;
+  readonly whatsappSender: WhatsAppSender;
 }
 
 /**
@@ -57,6 +68,7 @@ export async function createContext(
     ipAddress: request.ip,
     documentStorage: deps.documentStorage,
     documentScanner: deps.documentScanner,
+    whatsappSender: deps.whatsappSender,
   };
 
   const header = request.headers.authorization;

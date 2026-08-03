@@ -86,6 +86,26 @@ export const QUOTAS = {
       "Every application fires a manager notification (§4.4). Thirty an hour is more shifts than exist nearby; beyond that it is someone using our WhatsApp sender to bother pharmacists.",
   },
   /**
+   * §12.3 — the "Looking for a Locum" toggle.
+   *
+   * The tightest quota in this file, and the only one where the cost is
+   * primarily OURS. One toggle can send twenty-five WhatsApp messages
+   * immediately and up to sixty across escalation, each of them billed and
+   * each landing on a real pharmacist's phone. A manager toggling a shift on
+   * and off is therefore the most efficient way an authenticated account has
+   * to spend §11.6's daily budget — and unlike scraping, it does not even
+   * require bad intent, just an anxious manager and a slow morning.
+   *
+   * Ten an hour is more shifts than a single pharmacy has open at once.
+   */
+  lookingForLocum: {
+    action: "shifts.looking_for_locum",
+    limit: 10,
+    windowSeconds: 3_600,
+    because:
+      "One toggle can cost 25 WhatsApp messages immediately and 60 across escalation. This is the only quota where the expense is ours rather than the database's.",
+  },
+  /**
    * §10 data exports. Not scraping — but an export is the single densest
    * payload in the system, and repeatedly generating one is a cheap way to
    * make the database do expensive work.

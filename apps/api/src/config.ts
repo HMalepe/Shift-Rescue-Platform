@@ -71,14 +71,31 @@ const schema = z.object({
   DRILL_SECRET: z.string().min(16).optional(),
 
   /**
-   * §5/§10 — where verification documents live.
+   * §11.1/§12.3 — the outbound WhatsApp sender.
    *
-   * All optional so the service boots locally on the in-memory store, but the
-   * KMS key is not separately optional in spirit: the S3 adapter's constructor
-   * refuses without it, because these objects are SAPC certificates and ID
-   * documents. A bucket configured with no key fails at boot rather than
-   * storing plaintext identity documents.
+   * All three are needed together, and `assertProductionReady` refuses the
+   * fake in production. Content SIDs arrive as JSON because they do not exist
+   * until Meta approves each template (§15, externally blocked), so they
+   * cannot be hard-coded; a missing SID makes the adapter throw rather than
+   * silently downgrade to a free-form send.
    */
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_FROM_NUMBER: z.string().optional(),
+  TWILIO_CONTENT_SIDS: z
+    .string()
+    .default("{}")
+    .transform((raw, ctx) => {
+      try {
+        return JSON.parse(raw) as Record<string, string>;
+      } catch {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "TWILIO_CONTENT_SIDS must be JSON, e.g. {\"shift_offer_v1\":\"HX...\"}",
+        });
+        return z.NEVER;
+      }
+    }),
+
   /**
    * §12.1 — the malware scanner. clamd, reached over TCP.
    *
@@ -90,6 +107,15 @@ const schema = z.object({
   CLAMD_HOST: z.string().optional(),
   CLAMD_PORT: z.coerce.number().int().positive().default(3310),
 
+  /**
+   * §5/§10 — where verification documents live.
+   *
+   * All optional so the service boots locally on the in-memory store, but the
+   * KMS key is not separately optional in spirit: the S3 adapter's constructor
+   * refuses without it, because these objects are SAPC certificates and ID
+   * documents. A bucket configured with no key fails at boot rather than
+   * storing plaintext identity documents.
+   */
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().default("af-south-1"),
   S3_KMS_KEY_ID: z.string().optional(),
@@ -128,6 +154,17 @@ export function assertProductionReady(
      */
     readonly usingStubStorage?: boolean;
     readonly usingStubScanner?: boolean;
+    /**
+     * §12.3 — the API sends WhatsApp now.
+     *
+     * It did not until the Phase 3 fan-out landed: every message came from the
+     * worker, which has always had this guard. The "Looking for a Locum"
+     * toggle fires ring 0 inline, so the API acquired a sender and needs the
+     * same refusal. `FakeWhatsAppSender` marks every message sent, reports
+     * healthy, and delivers nothing — a manager would be told their regulars
+     * had been notified when nobody had.
+     */
+    readonly usingFakeWhatsAppSender?: boolean;
   } = {},
 ): void {
   if (config.NODE_ENV !== "production") return;
@@ -149,6 +186,12 @@ export function assertProductionReady(
   if (runtime.usingStubScanner) {
     problems.push(
       "document scanner is StubDocumentScanner, which detects only EICAR — wire a real malware scanner before production (§12.1)",
+    );
+  }
+
+  if (runtime.usingFakeWhatsAppSender) {
+    problems.push(
+      "WhatsApp sender is FakeWhatsAppSender — the §12.3 fan-out would report notifying locums who were never messaged",
     );
   }
 

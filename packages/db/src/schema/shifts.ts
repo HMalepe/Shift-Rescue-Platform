@@ -317,3 +317,52 @@ export const messages = pgTable(
       .where(sql`${table.flaggedDisintermediation} = true`),
   ],
 );
+
+/**
+ * §12.3 — who has been offered which shift, and in which ring.
+ *
+ * A durable record rather than a transient list, for three reasons:
+ *
+ *   1. Escalation happens minutes apart in a different process. Ring 2 must
+ *      know who ring 0 already reached, and "who did we message" cannot live
+ *      in the memory of whichever worker happened to run first.
+ *   2. It is the dedupe key. The unique index makes "notified twice about the
+ *      same shift" impossible at the database level rather than dependent on
+ *      the fan-out getting its exclusion list right — and a duplicate here is
+ *      a real WhatsApp message to a real person, which cannot be taken back.
+ *   3. It is what the §12.3 load-test verifier reads. k6 measures latency;
+ *      whether the fan-out respected `max_travel_km` under burst is a
+ *      database question, answered afterwards from these rows.
+ */
+export const shiftOffers = pgTable(
+  "shift_offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shifts.id, { onDelete: "cascade" }),
+    locumId: uuid("locum_id")
+      .notNull()
+      .references(() => locumProfiles.userId, { onDelete: "cascade" }),
+
+    /** 0 = favourites; 1..n = distance bands. */
+    ring: integer("ring").notNull(),
+    /**
+     * Metres at the moment of the offer, not recomputed later.
+     *
+     * A locum who moves house afterwards would otherwise make a past offer
+     * look like it broke the distance rule — which matters because these rows
+     * are the evidence the §12.3 gate is checked against.
+     */
+    distanceM: integer("distance_m").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(now),
+  },
+  (table) => [
+    // The invariant, at the database level: one offer per locum per shift.
+    uniqueIndex("shift_offers_unique").on(table.shiftId, table.locumId),
+    index("shift_offers_shift_idx").on(table.shiftId),
+  ],
+);

@@ -1,4 +1,8 @@
-import { ClamavDocumentScanner, S3DocumentStorage } from "@locum/integrations";
+import {
+  ClamavDocumentScanner,
+  S3DocumentStorage,
+  TwilioWhatsAppSender,
+} from "@locum/integrations";
 import { assertProductionReady, loadConfig } from "./config";
 import { buildServer } from "./server";
 
@@ -38,9 +42,30 @@ const documentScanner = config.CLAMD_HOST
   ? new ClamavDocumentScanner({ host: config.CLAMD_HOST, port: config.CLAMD_PORT })
   : undefined;
 
+/*
+ * §11.1/§12.3 — the real Twilio sender when it is configured.
+ *
+ * Content SIDs do not exist until Meta approves each template (§15 lists that
+ * as externally blocked), so they arrive as JSON from the environment rather
+ * than being hard-coded. A missing SID makes the adapter throw rather than
+ * fall back to a free-form send, which Meta would reject outside the 24-hour
+ * window while looking successful from here.
+ */
+const whatsappSender =
+  config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN && config.TWILIO_FROM_NUMBER
+    ? new TwilioWhatsAppSender({
+        accountSid: config.TWILIO_ACCOUNT_SID,
+        authToken: config.TWILIO_AUTH_TOKEN,
+        fromNumber: config.TWILIO_FROM_NUMBER,
+        statusCallbackUrl: `${config.PUBLIC_BASE_URL}/webhooks/twilio/status`,
+        contentSids: config.TWILIO_CONTENT_SIDS,
+      })
+    : undefined;
+
 assertProductionReady(config, {
   usingStubStorage: documentStorage === undefined,
   usingStubScanner: documentScanner === undefined,
+  usingFakeWhatsAppSender: whatsappSender === undefined,
 });
 
 const { app, client } = await buildServer(config, {
@@ -49,6 +74,7 @@ const { app, client } = await buildServer(config, {
   // is what "fall back to the stub" means.
   ...(documentStorage ? { documentStorage } : {}),
   ...(documentScanner ? { documentScanner } : {}),
+  ...(whatsappSender ? { whatsappSender } : {}),
 });
 
 /**

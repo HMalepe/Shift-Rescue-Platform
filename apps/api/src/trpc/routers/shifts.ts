@@ -9,7 +9,7 @@ import {
   pharmacyMembers,
   shifts,
 } from "@locum/db";
-import { QUOTAS } from "@locum/core";
+import { QUOTAS, startLookingForLocum } from "@locum/core";
 import { router, managerProcedure, locumProcedure, quota } from "../trpc";
 
 const createShiftSchema = z
@@ -33,6 +33,55 @@ const createShiftSchema = z
   });
 
 export const shiftsRouter = router({
+  /**
+   * §12.3 Phase 3 — "Looking for a Locum".
+   *
+   * Runs ring 0 (the pharmacy's favourites) INLINE rather than enqueuing it.
+   * The spec's framing is "the instant a manager toggles", and a manager who
+   * presses the button and is told "we notified your six regulars" has been
+   * given something; one told "we will get to it" has been given a promise.
+   *
+   * Later rings are not started here. They escalate through the worker, which
+   * re-checks that the shift is still open before each one — by the time ring 2
+   * is due the shift is usually filled, and that is the normal case.
+   *
+   * Quota'd like any other write. A toggle is cheap for the manager and
+   * expensive for the platform: each one can cost twenty-five WhatsApp
+   * messages, so toggling repeatedly is the most efficient way an authenticated
+   * account has to spend §11.6's daily budget.
+   */
+  lookingForLocum: managerProcedure
+    .use(quota(QUOTAS.lookingForLocum))
+    .input(z.object({ shiftId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      const [owned] = await ctx.db
+        .select({ id: shifts.id })
+        .from(shifts)
+        .innerJoin(
+          pharmacyMembers,
+          eq(pharmacyMembers.pharmacyId, shifts.pharmacyId),
+        )
+        .where(
+          and(
+            eq(shifts.id, input.shiftId),
+            eq(pharmacyMembers.userId, ctx.user.id),
+          ),
+        )
+        .limit(1);
+
+      if (!owned) {
+        // Not found rather than forbidden: a manager probing other pharmacies'
+        // shift IDs should not learn which ones exist.
+        throw new TRPCError({ code: "NOT_FOUND", message: "Shift not found" });
+      }
+
+      return startLookingForLocum(
+        ctx.db,
+        { sender: ctx.whatsappSender },
+        { shiftId: input.shiftId },
+      );
+    }),
+
   /**
    * Post a shift.
    *

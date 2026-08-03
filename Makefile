@@ -132,6 +132,18 @@ loadtest: ## §0.3/§12.3 — prepare fixtures, run k6, verify the invariant
 	#   LOADTEST_FAVOURITES, LOADTEST_CONFIRM_VUS, LOADTEST_DURATION
 	# The verify step is what closes the gate: k6 measures latency, but whether
 	# the row lock held is a database question answered after the run.
+	# THE TARGET API MUST BE STARTED WITH A RAISED PER-IP LIMIT:
+	#
+	#   RATE_LIMIT_MAX=100000 pnpm --filter @locum/api start
+	#
+	# k6 drives every request from one address, so §12.1's per-IP limiter
+	# (100/min by default) trips within seconds and the run measures the rate
+	# limiter instead of the system. The first combined run failed 93% of
+	# browse calls that way, which looked like a database problem and was not.
+	#
+	# The per-ACCOUNT quotas are deliberately left alone: those are per-token,
+	# the fixtures spread across many tokens, and the fan-out quota firing
+	# under a sustained toggle burst is correct behaviour the run should see.
 	@command -v k6 >/dev/null || { echo "k6 not installed: https://k6.io/docs/get-started/installation/"; exit 1; }
 	cd tools/loadtest && pnpm run prepare-fixtures
 	cd tools/loadtest && k6 run k6/booking-contention.js

@@ -4,10 +4,12 @@ import formBody from "@fastify/formbody";
 import { sql } from "drizzle-orm";
 import { createDatabase, type Database, type SqlClient } from "@locum/db";
 import {
+  FakeWhatsAppSender,
   InMemoryDocumentStorage,
   StubDocumentScanner,
   type DocumentScanner,
   type DocumentStorage,
+  type WhatsAppSender,
 } from "@locum/core";
 import {
   DrillError,
@@ -43,6 +45,8 @@ export interface ServerDeps {
    */
   readonly documentStorage?: DocumentStorage;
   readonly documentScanner?: DocumentScanner;
+  /** §12.3 — the fan-out sends inline; production must not get the fake. */
+  readonly whatsappSender?: WhatsAppSender;
   /** Injected by tests so alerting can be asserted without a receiver. */
   readonly reporter?: ErrorReporter;
 }
@@ -53,6 +57,7 @@ export async function buildServer(
 ): Promise<BuiltServer> {
   const documentStorage = deps.documentStorage ?? new InMemoryDocumentStorage();
   const documentScanner = deps.documentScanner ?? new StubDocumentScanner();
+  const whatsappSender = deps.whatsappSender ?? new FakeWhatsAppSender();
 
 
   const { db, client } = createDatabase({
@@ -196,7 +201,10 @@ export async function buildServer(
     trpcOptions: {
       router: appRouter,
       createContext: ({ req }: CreateFastifyContextOptions) =>
-        createContext({ db, config, documentStorage, documentScanner }, req),
+        createContext(
+          { db, config, documentStorage, documentScanner, whatsappSender },
+          req,
+        ),
       onError({ error, path }: { error: Error; path?: string | undefined }) {
         /*
          * Every tRPC failure is logged; only some are alerted on. `classify`

@@ -141,6 +141,25 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     because: "Financial records under SARS retention rules.",
   },
   {
+    table: "shift_offers",
+    action: "delete",
+    /*
+     * §12.3's record of who was proactively messaged about which shift.
+     *
+     * Deleted rather than retained, and the distinction from `bookings` is the
+     * point: a booking is evidence that someone worked, which a pharmacy may
+     * need years later. An OFFER is evidence only that we messaged them, and
+     * keeping a list of unanswered approaches to someone who has since asked
+     * to be erased is exactly the residue POPIA is about.
+     *
+     * It carries no reputation signal either — §7 counts completed shifts and
+     * no-shows, not offers declined — so deleting it cannot become the
+     * reputation reset that erasure.ts refuses to allow.
+     */
+    because:
+      "A record that we messaged this person about a shift. It proves nothing about work performed, and retaining unanswered approaches to an erased account is the residue §10 exists to remove.",
+  },
+  {
     table: "favourite_locums",
     action: "delete",
     because:

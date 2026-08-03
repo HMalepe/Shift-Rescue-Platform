@@ -26,7 +26,8 @@ Phases 1 and 2 are built. **335 tests, `make verify` green.**
 | Alerting + Phase 0 drill (§0.1) | Done — `make drill` fires it; the gate closes when a phone buzzes |
 | Booking, attendance, verification, messaging, billing | Done (§4–§9, §11) |
 | Reputation with density-aware anonymisation (§7) | Done |
-| Phase 3 proactive matching (§12.3) | Ring expansion done — escalating rings, two-sided distance, capped fan-out |
+| Phase 3 proactive matching (§12.3) | Done — escalating rings, two-sided distance, capped fan-out, `shifts.lookingForLocum` |
+| §12.3 combined load-test gate | Run — contention and fan-out together: 19/20 filled, 600 offers, every invariant clean |
 | POPIA access and erasure (§10) | Done |
 | Ops dashboard + on-call (§12.2) | Done |
 | Web client | Done — `apps/web` |

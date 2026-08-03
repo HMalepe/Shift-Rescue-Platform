@@ -11,6 +11,7 @@ import {
   pharmacyMembers,
   rateLimitCounters,
   ratings,
+  shiftOffers,
   sessions,
   users,
   whatsappMessageLog,
@@ -65,6 +66,8 @@ export interface DataExport {
   readonly loginAttempts: ReadonlyArray<Record<string, unknown>>;
   readonly savedByPharmacies: ReadonlyArray<Record<string, unknown>>;
   readonly usageCounters: ReadonlyArray<Record<string, unknown>>;
+  /** §12.3 — shifts this person was proactively messaged about. */
+  readonly shiftsYouWereOffered: ReadonlyArray<Record<string, unknown>>;
   readonly decisionsAboutYou: ReadonlyArray<Record<string, unknown>>;
   /** Plain-language note on what is held and what is withheld, and why. */
   readonly notes: ReadonlyArray<string>;
@@ -84,6 +87,7 @@ export const EXPORTED_TABLES: readonly string[] = [
   "sessions",
   "auth_attempts",
   "favourite_locums",
+  "shift_offers",
   "rate_limit_counters",
   "audit_log",
 ];
@@ -132,6 +136,7 @@ export async function exportSubjectData(
     loginAttempts,
     savedBy,
     usageCounters,
+    offers,
     decisions,
   ] = await Promise.all([
     db.select().from(locumProfiles).where(eq(locumProfiles.userId, subjectId)),
@@ -238,6 +243,24 @@ export async function exportSubjectData(
      * was rejected knowing exactly which named person rejected them is a
      * safety problem for that person, not a transparency win.
      */
+    /*
+     * §12.3 — shifts this person was proactively messaged about.
+     *
+     * Disclosed for the same reason it is erased: the retention test refuses
+     * any table that is one without being the other. It is also the more
+     * revealing half of the fan-out from the subject's side — it says which
+     * pharmacies approached them and how far away those shifts were, which is
+     * information about them that they did not supply.
+     */
+    db
+      .select({
+        shiftId: shiftOffers.shiftId,
+        ring: shiftOffers.ring,
+        distanceM: shiftOffers.distanceM,
+        createdAt: shiftOffers.createdAt,
+      })
+      .from(shiftOffers)
+      .where(eq(shiftOffers.locumId, subjectId)),
     db
       .select({
         id: auditLog.id,
@@ -266,6 +289,7 @@ export async function exportSubjectData(
     loginAttempts,
     savedByPharmacies: savedBy,
     usageCounters,
+    shiftsYouWereOffered: offers,
     decisionsAboutYou: decisions,
     notes: [
       "This is everything Locum Planner holds about you, across every table.",

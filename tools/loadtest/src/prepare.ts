@@ -45,6 +45,13 @@ const config = {
    * proactive-matching burst is this wide per pharmacy.
    */
   favouritesPerPharmacy: int("LOADTEST_FAVOURITES", 300),
+  /*
+   * Shifts reserved for the fan-out, one manager each. More than a handful is
+   * wasteful; fewer than the toggle rate means every toggle after the first
+   * few hits an already-fanned-out shift and the burst measures the dedupe
+   * rather than the fan-out.
+   */
+  fanoutShifts: int("LOADTEST_FANOUT_SHIFTS", 12),
   /** Locums browsing concurrently, exercising the proximity read path. */
   browsingLocums: int("LOADTEST_BROWSING_LOCUMS", 50),
 
@@ -126,6 +133,7 @@ async function main() {
       `= ${config.contendedShifts * config.applicantsPerShift} racing confirmations`,
   );
   console.log(`  ${config.favouritesPerPharmacy} favourites/pharmacy (fan-out width)`);
+  console.log(`  ${config.fanoutShifts} shifts reserved for the fan-out burst`);
 
   await cleanupPreviousRun();
 
@@ -133,10 +141,22 @@ async function main() {
   const authConfig = { ...DEFAULT_AUTH_CONFIG, secret: config.authSecret };
 
   // ---- browsing locums (the fan-out read path) -------------------------
+  /*
+   * A phone number and a WhatsApp opt-in, because the fan-out will not select
+   * anyone without them (§11.4).
+   *
+   * Missing from the first version of these fixtures, and the omission was
+   * only exposed once the fan-out existed: the combined run reported
+   * `fanout_offers_made: 0` while every threshold passed. The selection was
+   * behaving correctly and the harness was measuring nothing — which is
+   * exactly the "green run that proves nothing" the verifier now fails on.
+   */
   const browsingLocumRows = Array.from({ length: config.browsingLocums }, (_, i) => ({
     role: "locum" as const,
     email: `lt-browse-${i}@${LOADTEST_TAG}`,
     fullName: `Loadtest Browser ${i}`,
+    phone: `+2782${String(3_000_000 + i).slice(0, 7)}`,
+    whatsappOptInAt: new Date(),
     passwordHash,
   }));
   const browsingLocums = await db
@@ -263,6 +283,87 @@ async function main() {
     });
   }
 
+  /*
+   * ---- fan-out shifts --------------------------------------------------
+   *
+   * A SEPARATE set of shifts, with favourites and no applicants, used only by
+   * the toggle scenario.
+   *
+   * They exist because the first combined run reported zero offers and the
+   * reason was not a bug: the contention scenario confirms every contended
+   * shift within the first second, `selectRing` correctly refuses to notify
+   * anyone about a shift that is no longer open, and by the time the toggles
+   * fired there was nothing left to fan out to.
+   *
+   * §12.3 wants both paths exercised AT THE SAME TIME, which is only possible
+   * if the fan-out has shifts the contention scenario is not racing to fill.
+   * One manager per shift, so the per-account toggle quota does not turn the
+   * burst into a measurement of the rate limiter.
+   */
+  const fanoutShifts: Array<{ shiftId: string; managerToken: string }> = [];
+
+  for (let i = 0; i < config.fanoutShifts; i += 1) {
+    const [manager] = await db
+      .insert(users)
+      .values({
+        role: "manager",
+        email: `lt-fanmgr-${i}@${LOADTEST_TAG}`,
+        fullName: `Loadtest Fanout Manager ${i}`,
+        passwordHash,
+      })
+      .returning({ id: users.id, email: users.email });
+
+    const [pharmacy] = await db
+      .insert(pharmacies)
+      .values({
+        name: `loadtest-fanout-pharmacy-${i}`,
+        addressLine: "2 Load Road",
+        city: "Johannesburg",
+        location: SANDTON,
+      })
+      .returning({ id: pharmacies.id });
+
+    await db.insert(pharmacyMembers).values({
+      pharmacyId: pharmacy!.id,
+      userId: manager!.id,
+      isPrimary: true,
+    });
+
+    const favouriteSlice = browsingLocums.slice(
+      0,
+      Math.min(config.favouritesPerPharmacy, browsingLocums.length),
+    );
+    if (favouriteSlice.length > 0) {
+      await db
+        .insert(favouriteLocums)
+        .values(
+          favouriteSlice.map((l) => ({ pharmacyId: pharmacy!.id, locumId: l.id })),
+        );
+    }
+
+    const [shift] = await db
+      .insert(shifts)
+      .values({
+        pharmacyId: pharmacy!.id,
+        createdBy: manager!.id,
+        startsAt: new Date(Date.now() + 96 * 3_600_000),
+        endsAt: new Date(Date.now() + 104 * 3_600_000),
+        hourlyRateCents: 45_000,
+        status: "open",
+        visibility: "radius",
+        radiusKm: 30,
+        location: SANDTON,
+      })
+      .returning({ id: shifts.id });
+
+    const tokens = await login(db, authConfig, {
+      email: manager!.email,
+      password: PASSWORD,
+    });
+
+    fanoutShifts.push({ shiftId: shift!.id, managerToken: tokens.accessToken });
+  }
+
   // ---- browsing tokens -------------------------------------------------
   const locumTokens: string[] = [];
   for (const locum of browsingLocums) {
@@ -285,8 +386,10 @@ async function main() {
           applicantsPerShift: config.applicantsPerShift,
           favouritesPerPharmacy: config.favouritesPerPharmacy,
           browsingLocums: config.browsingLocums,
+          fanoutShifts: config.fanoutShifts,
         },
         shifts: manifestShifts,
+        fanoutShifts,
         locumTokens,
       },
       null,
@@ -298,7 +401,8 @@ async function main() {
   console.log(
     `  ${manifestShifts.length} shifts, ` +
       `${manifestShifts.reduce((n, s) => n + s.bookingIds.length, 0)} bookings, ` +
-      `${locumTokens.length} browsing locums`,
+      `${locumTokens.length} browsing locums, ` +
+      `${fanoutShifts.length} fan-out shifts`,
   );
 }
 
