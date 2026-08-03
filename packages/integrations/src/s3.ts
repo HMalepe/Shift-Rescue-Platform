@@ -24,12 +24,28 @@ import type { DocumentStorage, StoredObject } from "@locum/core";
  *
  * ## Encryption is not optional here
  *
- * `kmsKeyId` is required by the type. There is no unencrypted path and no
- * "encryption defaults to off if unset", because the failure mode of that
- * design is a bucket of identity documents that everyone believes is
- * encrypted. §10 treats these as special personal information; encryption at
- * rest is the baseline expectation, and a config field that can be quietly
- * omitted is not a baseline.
+ * `sse` is required by the type and has no "off" variant. There is no
+ * unencrypted path and no "encryption defaults to off if unset", because the
+ * failure mode of that design is a bucket of identity documents that everyone
+ * believes is encrypted. §10 treats these as special personal information;
+ * encryption at rest is the baseline expectation, and a config field that can
+ * be quietly omitted is not a baseline.
+ *
+ * Two modes exist because this adapter now also targets S3-compatible
+ * providers used for the Railway MVP path (Cloudflare R2), not only AWS:
+ *
+ *   - `aws-kms` — SSE-KMS named explicitly on every write, with a
+ *     customer-controlled key. This is the AWS path (`infra/storage.tf`).
+ *   - `provider-managed` — no encryption header is sent at all, because R2
+ *     (and similarly Backblaze B2) encrypts every object at rest by default,
+ *     with a key the account holder does not manage. There is no bucket
+ *     equivalent of `x-amz-server-side-encryption-aws-kms-key-id` to send;
+ *     sending the AWS header to R2 is simply not part of its contract.
+ *
+ * The discriminated union exists so the choice is explicit at the config
+ * boundary rather than inferred from which fields happen to be set — a config
+ * that silently fell back to "no header" whenever a KMS key was absent is
+ * exactly the silent downgrade this file was written to prevent.
  *
  * ## What this deliberately does NOT do
  *
@@ -39,6 +55,14 @@ import type { DocumentStorage, StoredObject } from "@locum/core";
  * case where bytes must be streamed from S3 directly, and it is capped at the
  * same TTL rather than accepting whatever a caller passes.
  */
+
+/**
+ * How this object is encrypted at rest. See the header for why this is a
+ * discriminated union rather than an optional `kmsKeyId`.
+ */
+export type SseConfig =
+  | { readonly mode: "aws-kms"; readonly kmsKeyId: string }
+  | { readonly mode: "provider-managed" };
 
 export interface S3Config {
   readonly bucket: string;
@@ -50,7 +74,7 @@ export interface S3Config {
    * field that can be omitted is how a bucket of ID documents ends up
    * unencrypted while everyone believes otherwise.
    */
-  readonly kmsKeyId: string;
+  readonly sse: SseConfig;
   /**
    * Overrides the AWS endpoint, for tests and for MinIO. When set, requests use
    * path-style addressing (`/bucket/key`); otherwise virtual-hosted style. The
@@ -211,17 +235,18 @@ export class S3DocumentStorage implements DocumentStorage {
   private readonly config: S3Config;
 
   constructor(config: S3Config) {
-    if (!config.kmsKeyId) {
+    if (!config.sse || (config.sse.mode === "aws-kms" && !config.sse.kmsKeyId)) {
       /*
        * Belt and braces with the required field on the type — config often
        * arrives from environment variables, where the type system is not
        * present and an unset variable is the empty string rather than
        * undefined. That is exactly the path by which encryption gets silently
-       * disabled.
+       * disabled. `provider-managed` still has to be chosen explicitly; it is
+       * not what an absent `sse` falls back to.
        */
       throw new Error(
-        "S3DocumentStorage requires kmsKeyId: these objects are ID documents and " +
-          "SAPC certificates (POPIA special personal information, §10).",
+        "S3DocumentStorage requires sse (aws-kms with a key, or provider-managed): " +
+          "these objects are ID documents and SAPC certificates (POPIA special personal information, §10).",
       );
     }
     this.config = config;
@@ -233,14 +258,26 @@ export class S3DocumentStorage implements DocumentStorage {
       headers: {
         "content-type": contentType,
         /*
-         * SSE-KMS, named explicitly on every write. Bucket default encryption
-         * exists and should also be set, but it lives in Terraform where a
-         * later edit can remove it without any code change — and the objects
-         * already written stay as they were. Asking per-object means a bucket
-         * misconfiguration cannot quietly produce plaintext ID documents.
+         * SSE-KMS, named explicitly on every write when the provider is AWS.
+         * Bucket default encryption exists and should also be set, but it
+         * lives in Terraform where a later edit can remove it without any
+         * code change — and the objects already written stay as they were.
+         * Asking per-object means a bucket misconfiguration cannot quietly
+         * produce plaintext ID documents.
+         *
+         * `provider-managed` sends NO encryption header at all — R2 has no
+         * bucket-side equivalent of `x-amz-server-side-encryption-aws-kms-
+         * key-id` to receive it, and encrypts every object at rest under a key
+         * it manages regardless of what the request asks for. Sending the AWS
+         * header there is not "extra safety"; it is a header outside the
+         * provider's contract.
          */
-        "x-amz-server-side-encryption": "aws:kms",
-        "x-amz-server-side-encryption-aws-kms-key-id": this.config.kmsKeyId,
+        ...(this.config.sse.mode === "aws-kms"
+          ? {
+              "x-amz-server-side-encryption": "aws:kms",
+              "x-amz-server-side-encryption-aws-kms-key-id": this.config.sse.kmsKeyId,
+            }
+          : {}),
       },
     });
 

@@ -14,7 +14,7 @@ See `docs/` for the full product and technical specification.
 ## Status
 
 Phase 0 is complete except for what needs a third party or physical hardware.
-Phases 1 and 2 are built. **335 tests, `make verify` green.**
+Phases 1 and 2 are built. **339 tests, `make verify` green.**
 
 | Area | State |
 |---|---|
@@ -31,13 +31,13 @@ Phases 1 and 2 are built. **335 tests, `make verify` green.**
 | POPIA access and erasure (§10) | Done |
 | Ops dashboard + on-call (§12.2) | Done |
 | Web client | Done — `apps/web` |
-| Vendor adapters (§0.2) | Done — Twilio, Payfast, S3, ClamAV, all tested against something real |
+| Vendor adapters (§0.2) | Done — Twilio, Payfast, S3-compatible (AWS or R2), ClamAV, all tested against something real |
 | Malware scanning (§12.1) | Done — clamd over INSTREAM, fails closed; no "unknown" verdict exists |
 | Production boot (§0.2) | Verified — `assertProductionReady` passes and the API serves with real adapters wired |
-| Container image | Written — `Dockerfile`. Never built: no Docker daemon available here |
-| Terraform (§0.1) | Written and validated against the real AWS provider schema. **Never planned, never applied** |
-| Staging environment (§0.1) | **Blocked** — needs AWS credentials |
-| Vendor sandboxes (§0.2) | **Blocked** — needs a Payfast account and an approved Meta sender |
+| Container image | Written — `Dockerfile`. Never built locally: no Docker daemon here, but Railway builds it directly |
+| **MVP deploy path: Railway** | Written, not yet deployed — see `docs/RAILWAY.md`. No AWS account or domain needed to go live; storage targets Cloudflare R2 (`S3_SSE_MODE=provider-managed`) instead of AWS S3 |
+| Terraform (§0.1, AWS scale-out) | Written and validated against the real AWS provider schema. **Deferred** — Railway is the current path; this stays for later |
+| Vendor sandboxes (§0.2) | Twilio and Payfast accounts exist; templates/credentials still need wiring into the live environment |
 | Mobile (Expo) | Built — `apps/mobile`. The anti-spoofing gate still needs a physical Android device (§16) |
 
 Every gate in `gates.json` is recorded as `executed`, not `passed`. §15 is
@@ -56,7 +56,8 @@ ones on written return; none has an evidence URL yet, and calling any of them
 | Queues | BullMQ + Redis | Quiet-hours deferral (§4.4), dunning retries (§2), notification fan-out (§12.3). |
 | Web | Next.js 16 | Manager console + admin verification queue. |
 | Mobile | Expo (React Native) | §16: anti-spoofing needs Android `isFromMockProvider()`. No browser equivalent exists, so a PWA cannot close that gate. |
-| Hosting | AWS af-south-1 (Cape Town) | Latency to Gauteng users and POPIA data residency. Terraform for the single-command redeploy §0.1 requires. |
+| Hosting (MVP) | Railway | `docs/RAILWAY.md` — fastest path to live, no AWS account or domain purchase required. |
+| Hosting (scale-out) | AWS af-south-1 (Cape Town) | Latency to Gauteng users and POPIA data residency once real usage justifies the move. `infra/` Terraform stays validated for this. |
 
 ## Repository layout
 
@@ -65,8 +66,8 @@ packages/db             Drizzle schema, migrations, PostGIS types, seed generato
 packages/core           Framework-agnostic domain services — booking, auth,
                         attendance, messaging, billing, reputation, privacy
 packages/observability  Error classification, alert transport, §0.1 drill
-packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast, S3,
-                        ClamAV malware scanning
+packages/integrations   Real vendor adapters — Twilio WhatsApp, Payfast,
+                        S3-compatible storage (AWS or R2), ClamAV scanning
 apps/api                Fastify + tRPC, Twilio webhooks, REST auth
 apps/worker             BullMQ processors — quiet-hours drain, dunning, sweeps
 apps/web                Next.js client for all three roles
@@ -74,8 +75,17 @@ apps/mobile             Expo locum app — browse, apply, check in/out
 tools/loadtest          k6 harness (§0.3)
 tools/devdata           Local sign-ins for the seeded fixtures
 infra/                  Terraform, af-south-1 — validates against the real
-                        provider schema; never planned, never applied
+                        provider schema; deferred scale-out path, not the
+                        current deploy target
+railway.json            Railway build/deploy config — the API service
+railway.worker.json     Same image, worker start command — see docs/RAILWAY.md
 ```
+
+## Deploying
+
+`docs/RAILWAY.md` is the current path to a live instance — no AWS account or
+domain purchase needed. `infra/` remains the Terraform/AWS scale-out path for
+later.
 
 ## Getting started
 
@@ -86,7 +96,7 @@ make up-native     # ...or without a Docker daemon
 make migrate
 make seed          # §14 fixtures — 5,200 accounts, real metro density
 make dev-users     # give those fixtures a password, and create an admin
-make verify        # §0.4 — typecheck, lint, 335 tests. Exits non-zero on failure.
+make verify        # §0.4 — typecheck, lint, 339 tests. Exits non-zero on failure.
 ```
 
 Then, in three terminals:

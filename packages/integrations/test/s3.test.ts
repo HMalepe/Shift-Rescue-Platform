@@ -86,21 +86,31 @@ function storage(overrides: Record<string, unknown> = {}) {
     region: "af-south-1",
     accessKeyId: "AKIAEXAMPLE",
     secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-    kmsKeyId: "arn:aws:kms:af-south-1:111122223333:key/abcd",
+    sse: { mode: "aws-kms", kmsKeyId: "arn:aws:kms:af-south-1:111122223333:key/abcd" },
     endpoint,
     ...overrides,
   });
 }
 
 describe("GATE storage.s3_adapter — encryption is not optional", () => {
-  it("refuses to construct without a KMS key", () => {
+  it("refuses to construct without a KMS key when the mode is aws-kms", () => {
     /*
      * The type already requires it. This covers the path the type cannot:
      * config from environment variables, where an unset variable arrives as
      * the empty string. That is precisely how a bucket of ID documents ends up
      * unencrypted while every reviewer believes otherwise.
      */
-    expect(() => storage({ kmsKeyId: "" })).toThrow(/requires kmsKeyId/);
+    expect(() => storage({ sse: { mode: "aws-kms", kmsKeyId: "" } })).toThrow(/requires sse/);
+  });
+
+  it("refuses to construct with no sse config at all", () => {
+    // `provider-managed` must be chosen explicitly — it is not what an absent
+    // field silently becomes.
+    expect(() => storage({ sse: undefined })).toThrow(/requires sse/);
+  });
+
+  it("accepts provider-managed without a KMS key", () => {
+    expect(() => storage({ sse: { mode: "provider-managed" } })).not.toThrow();
   });
 
   it("names SSE-KMS on every single write", async () => {
@@ -118,6 +128,26 @@ describe("GATE storage.s3_adapter — encryption is not optional", () => {
     expect(headers["x-amz-server-side-encryption-aws-kms-key-id"]).toBe(
       "arn:aws:kms:af-south-1:111122223333:key/abcd",
     );
+  });
+
+  it("sends no encryption header at all in provider-managed mode", async () => {
+    /*
+     * The Railway/R2 path. R2 has no bucket-side equivalent of
+     * x-amz-server-side-encryption-aws-kms-key-id, and encrypts every object
+     * at rest under a key it manages regardless of what the request carries.
+     * Sending the AWS header there is not extra safety — it is a header
+     * outside the provider's contract, and asserting its absence is what
+     * stops the aws-kms branch from leaking into a mode meant to be silent.
+     */
+    await storage({ sse: { mode: "provider-managed" } }).put(
+      "locums/l-1/sapc.pdf",
+      Buffer.from("%PDF-1.4"),
+      "application/pdf",
+    );
+
+    const headers = received[0]!.headers;
+    expect(headers["x-amz-server-side-encryption"]).toBeUndefined();
+    expect(headers["x-amz-server-side-encryption-aws-kms-key-id"]).toBeUndefined();
   });
 
   it("never puts the secret access key on the wire", async () => {
@@ -355,7 +385,7 @@ describe("GATE storage.s3_adapter — addressing", () => {
       region: "af-south-1",
       accessKeyId: "AKIAEXAMPLE",
       secretAccessKey: "secret",
-      kmsKeyId: "arn:aws:kms:af-south-1:111122223333:key/abcd",
+      sse: { mode: "aws-kms", kmsKeyId: "arn:aws:kms:af-south-1:111122223333:key/abcd" },
       fetchImpl: (async (url: string, init: RequestInit) => {
         captured.push({
           url: String(url),
@@ -372,5 +402,42 @@ describe("GATE storage.s3_adapter — addressing", () => {
     );
     // The signed host header must be the one actually addressed.
     expect(captured[0]!.host).toBe("locum-documents.s3.af-south-1.amazonaws.com");
+  });
+
+  it("uses path-style against an R2-shaped endpoint, provider-managed, no KMS", async () => {
+    /*
+     * The actual Railway MVP config: an R2 account ID in the endpoint, region
+     * "auto" (R2's own requirement, and just a string as far as SigV4 scoping
+     * is concerned), and provider-managed encryption. Exercised end to end
+     * rather than assumed, because `endpoint` already forces path-style for
+     * MinIO/tests and it would be easy to believe that generalises to R2
+     * without checking that no AWS-specific assumption sneaks back in.
+     */
+    const captured: Array<{ url: string; host: string; headers: Record<string, string> }> = [];
+    const s = new S3DocumentStorage({
+      bucket: "locum-documents",
+      region: "auto",
+      accessKeyId: "r2-access-key-id",
+      secretAccessKey: "r2-secret",
+      sse: { mode: "provider-managed" },
+      endpoint: "https://abcd1234ef.r2.cloudflarestorage.com",
+      fetchImpl: (async (url: string, init: RequestInit) => {
+        captured.push({
+          url: String(url),
+          host: (init.headers as Record<string, string>)["host"]!,
+          headers: init.headers as Record<string, string>,
+        });
+        return new Response(new ArrayBuffer(0), { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+
+    await s.put("locums/l-1/c.pdf", Buffer.from("x"), "application/pdf");
+
+    expect(captured[0]!.url).toBe(
+      "https://abcd1234ef.r2.cloudflarestorage.com/locum-documents/locums/l-1/c.pdf",
+    );
+    expect(captured[0]!.host).toBe("abcd1234ef.r2.cloudflarestorage.com");
+    expect(captured[0]!.headers["authorization"]).toContain("/auto/s3/aws4_request");
+    expect(captured[0]!.headers["x-amz-server-side-encryption"]).toBeUndefined();
   });
 });

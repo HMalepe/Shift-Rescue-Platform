@@ -110,15 +110,24 @@ const schema = z.object({
   /**
    * §5/§10 — where verification documents live.
    *
-   * All optional so the service boots locally on the in-memory store, but the
-   * KMS key is not separately optional in spirit: the S3 adapter's constructor
-   * refuses without it, because these objects are SAPC certificates and ID
-   * documents. A bucket configured with no key fails at boot rather than
-   * storing plaintext identity documents.
+   * All optional so the service boots locally on the in-memory store. Two
+   * S3-compatible providers are supported: AWS itself (`infra/`, `S3_SSE_MODE
+   * =aws-kms`, requires `S3_KMS_KEY_ID`) and Cloudflare R2 for the Railway MVP
+   * path (`S3_SSE_MODE=provider-managed`, requires `S3_ENDPOINT`, no KMS key —
+   * R2 encrypts every object at rest under a key it manages itself and has no
+   * bucket-side equivalent of a customer KMS key to send).
+   *
+   * `S3_SSE_MODE` has no default. An unset value means storage falls back to
+   * the in-memory stub rather than guessing a mode — silently defaulting to
+   * `provider-managed` the moment a bucket name appears is exactly the kind of
+   * inferred security posture this file has otherwise refused to allow.
    */
   S3_BUCKET: z.string().optional(),
   S3_REGION: z.string().default("af-south-1"),
+  S3_SSE_MODE: z.enum(["aws-kms", "provider-managed"]).optional(),
   S3_KMS_KEY_ID: z.string().optional(),
+  /** Set for R2/MinIO; unset targets AWS S3 directly. */
+  S3_ENDPOINT: z.string().optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
 });
@@ -180,7 +189,8 @@ export function assertProductionReady(
    */
   if (runtime.usingStubStorage) {
     problems.push(
-      "document storage is InMemoryDocumentStorage — set S3_BUCKET/S3_KMS_KEY_ID to wire the real adapter",
+      "document storage is InMemoryDocumentStorage — set S3_BUCKET, S3_SSE_MODE (and " +
+        "S3_KMS_KEY_ID if aws-kms) plus AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY to wire the real adapter",
     );
   }
   if (runtime.usingStubScanner) {

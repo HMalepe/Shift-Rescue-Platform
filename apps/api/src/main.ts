@@ -2,6 +2,7 @@ import {
   ClamavDocumentScanner,
   S3DocumentStorage,
   TwilioWhatsAppSender,
+  type SseConfig,
 } from "@locum/integrations";
 import { assertProductionReady, loadConfig } from "./config";
 import { buildServer } from "./server";
@@ -9,24 +10,42 @@ import { buildServer } from "./server";
 const config = loadConfig();
 
 /*
- * Real S3 when it is configured, the in-memory store otherwise.
+ * The encryption mode, resolved explicitly rather than guessed from which
+ * fields happen to be set.
  *
- * All four values are required together — a bucket with no credentials, or a
- * bucket with no KMS key, is a misconfiguration rather than a partial setup,
- * and falling back to the in-memory store on a half-set config would look like
- * a working upload feature that loses every document on restart.
+ * `aws-kms` needs a key; `provider-managed` (R2/B2 on the Railway path) does
+ * not, because those providers encrypt at rest under a key they manage and
+ * have no bucket-side slot for a customer key at all. An `S3_SSE_MODE` set to
+ * `aws-kms` with no `S3_KMS_KEY_ID` is a misconfiguration, not a fallback —
+ * `sse` below is left `undefined` and storage falls back to the in-memory
+ * stub, which `assertProductionReady` then refuses in production.
+ */
+const sse: SseConfig | undefined =
+  config.S3_SSE_MODE === "aws-kms" && config.S3_KMS_KEY_ID
+    ? { mode: "aws-kms", kmsKeyId: config.S3_KMS_KEY_ID }
+    : config.S3_SSE_MODE === "provider-managed"
+      ? { mode: "provider-managed" }
+      : undefined;
+
+/*
+ * Real S3-compatible storage when it is fully configured, the in-memory store
+ * otherwise.
+ *
+ * Bucket, credentials and a resolved encryption mode are required together —
+ * a bucket with credentials but no valid `sse` is a misconfiguration rather
+ * than a partial setup, and falling back to the in-memory store on a half-set
+ * config would look like a working upload feature that loses every document
+ * on restart.
  */
 const documentStorage =
-  config.S3_BUCKET &&
-  config.S3_KMS_KEY_ID &&
-  config.AWS_ACCESS_KEY_ID &&
-  config.AWS_SECRET_ACCESS_KEY
+  config.S3_BUCKET && config.AWS_ACCESS_KEY_ID && config.AWS_SECRET_ACCESS_KEY && sse
     ? new S3DocumentStorage({
         bucket: config.S3_BUCKET,
         region: config.S3_REGION,
-        kmsKeyId: config.S3_KMS_KEY_ID,
+        sse,
         accessKeyId: config.AWS_ACCESS_KEY_ID,
         secretAccessKey: config.AWS_SECRET_ACCESS_KEY,
+        ...(config.S3_ENDPOINT ? { endpoint: config.S3_ENDPOINT } : {}),
       })
     : undefined;
 

@@ -235,6 +235,14 @@ locals {
     { name = "REDIS_URL", value = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379" },
     { name = "S3_BUCKET", value = aws_s3_bucket.documents.id },
     { name = "S3_REGION", value = var.region },
+    /*
+     * S3_SSE_MODE has no default in the application config on purpose —
+     * S3DocumentStorage now also supports a `provider-managed` mode for the
+     * Railway/R2 MVP path, and an unset mode falls back to the in-memory
+     * stub rather than guessing. AWS must say so explicitly here, or this
+     * task definition would deploy production silently running the stub.
+     */
+    { name = "S3_SSE_MODE", value = "aws-kms" },
     { name = "S3_KMS_KEY_ID", value = aws_kms_key.main.arn },
     { name = "PUBLIC_BASE_URL", value = var.public_base_url },
     /*
