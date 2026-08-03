@@ -14,7 +14,7 @@ See `docs/` for the full product and technical specification.
 ## Status
 
 Phase 0 is complete except for what needs a third party or physical hardware.
-Phases 1 and 2 are built. **339 tests, `make verify` green.**
+Phases 1 and 2 are built. **378 tests, `make verify` green.**
 
 | Area | State |
 |---|---|
@@ -31,6 +31,8 @@ Phases 1 and 2 are built. **339 tests, `make verify` green.**
 | POPIA access and erasure (§10) | Done |
 | Ops dashboard + on-call (§12.2) | Done |
 | Web client | Done — `apps/web` |
+| Payfast Subscribe + billing period rollover (§2) | Done — tokenize-only checkout, ITN webhook (signature + mandatory postback-validate), month 2+ auto-billing. §15: G → X, no live Payfast sandbox has confirmed the exact field shape yet |
+| **Dashboard deploy path: Vercel** | Written, not yet deployed — see `docs/VERCEL.md`. Bearer-token BFF architecture means no cross-domain cookie or CORS concerns against the Railway API |
 | Vendor adapters (§0.2) | Done — Twilio, Payfast, S3-compatible (AWS or R2), ClamAV, all tested against something real |
 | Malware scanning (§12.1) | Done — clamd over INSTREAM, fails closed; no "unknown" verdict exists |
 | Production boot (§0.2) | Verified — `assertProductionReady` passes and the API serves with real adapters wired |
