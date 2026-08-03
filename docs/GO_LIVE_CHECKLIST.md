@@ -55,15 +55,30 @@ Two corrections baked into this list, not glossed over:
       `POST /webhooks/twilio/status` (wrong `PUBLIC_BASE_URL` or auth token
       breaks this).
 
-## 6. Payfast — verify at the source, since the dashboard can't trigger it
+## 6. Payfast
+
+Two separate paths, both now wired end to end — verify each once.
+
+**Subscribe (new subscription):**
+
+- [ ] Sign in as a manager, visit `/billing`, click Subscribe.
+- [ ] Browser lands on Payfast's hosted checkout (sandbox merchant account).
+- [ ] Complete a sandbox payment.
+- [ ] Payfast redirects back to `/billing/return` (the Vercel dashboard, not
+      the API — if this 404s or serves raw JSON, `DASHBOARD_BASE_URL` on the
+      API is wrong).
+- [ ] `apps/api` logs show `POST /webhooks/payfast/itn` with no
+      signature-mismatch or postback-validate rejection.
+- [ ] Subscription row's `status` moves to `active` with `provider_ref` set to
+      the real Payfast mandate token, not empty.
+
+**Dunning (existing subscription going past-due) — still not dashboard-triggerable:**
 
 - [ ] Seed/insert a subscription row with a past due date.
 - [ ] Trigger the worker job once (`railway run --service worker ...` or wait
       for its schedule).
 - [ ] Payfast merchant dashboard shows the sandbox transaction.
 - [ ] `worker` logs: no signature-mismatch or auth error.
-- [ ] Known gap, not solved here: no user-facing "subscribe/pay now" flow
-      exists in `apps/web` yet.
 
 ## 7. "No CORS errors" — nothing to check, structurally
 

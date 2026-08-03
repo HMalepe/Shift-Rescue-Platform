@@ -1,7 +1,12 @@
 import pino from "pino";
 import { createDatabase } from "@locum/db";
-import { FakePaymentProvider, FakeWhatsAppSender, type WhatsAppSender } from "@locum/core";
-import { TwilioWhatsAppSender } from "@locum/integrations";
+import {
+  FakePaymentProvider,
+  FakeWhatsAppSender,
+  type PaymentProvider,
+  type WhatsAppSender,
+} from "@locum/core";
+import { PayfastPaymentProvider, TwilioWhatsAppSender } from "@locum/integrations";
 import { NoopReporter, WebhookReporter, type ErrorReporter } from "@locum/observability";
 import { assertWorkerProductionReady, loadWorkerConfig } from "./config";
 import { registerSchedules, startScheduler } from "./scheduler";
@@ -10,14 +15,17 @@ const config = loadWorkerConfig();
 const log = pino({ level: config.NODE_ENV === "production" ? "info" : "debug" });
 
 /*
- * §15 classes both of these adapters as externally blocked: the real ones need
- * an approved Meta sender (§11.1) and a Payfast merchant account, neither of
- * which can be created from here. The fakes are what runs locally, and
- * assertWorkerProductionReady is told so explicitly — a worker running the
- * fake sender marks every message `sent` and reports healthy while nothing
- * arrives, which is the worst failure shape this service has.
+ * Both real adapters are used the moment they are fully configured, and the
+ * fakes are the local-dev fallback. §15 still classes both as unverified
+ * against a live vendor: no Twilio sender has ever sent a real WhatsApp
+ * message and no Payfast credential set has ever reached the real API from
+ * here — but the wiring itself is real, not a placeholder waiting to be
+ * written.
  *
- * When the real adapters land, construct them here and drop the flags.
+ * `assertWorkerProductionReady` refuses to boot production on whichever of
+ * the two ends up on the fake — a worker running the fake payment provider
+ * settles charges that were never charged, and reports healthy while doing
+ * it, which is the worst failure shape this service has.
  */
 /*
  * The real sender is used the moment it is fully configured. "Fully" is the
@@ -41,11 +49,30 @@ const sender: WhatsAppSender = twilioConfigured
     })
   : new FakeWhatsAppSender();
 
-const provider = new FakePaymentProvider();
+/*
+ * Same "fully configured or not at all" rule as Twilio above. The passphrase
+ * is technically optional in Payfast's own docs and required in practice —
+ * see the note on `PayfastConfig.passphrase` — so it is required here too,
+ * rather than letting a merchant id and key alone produce a provider that
+ * signs every request wrong.
+ */
+const payfastConfigured =
+  config.PAYFAST_MERCHANT_ID !== undefined &&
+  config.PAYFAST_MERCHANT_KEY !== undefined &&
+  config.PAYFAST_PASSPHRASE !== undefined;
+
+const provider: PaymentProvider = payfastConfigured
+  ? new PayfastPaymentProvider({
+      merchantId: config.PAYFAST_MERCHANT_ID!,
+      merchantKey: config.PAYFAST_MERCHANT_KEY!,
+      passphrase: config.PAYFAST_PASSPHRASE!,
+      ...(config.PAYFAST_BASE_URL !== undefined && { baseUrl: config.PAYFAST_BASE_URL }),
+    })
+  : new FakePaymentProvider();
 
 assertWorkerProductionReady(config, {
   usingFakeSender: !twilioConfigured,
-  usingFakePaymentProvider: true,
+  usingFakePaymentProvider: !payfastConfigured,
 });
 
 const { db, client } = createDatabase({

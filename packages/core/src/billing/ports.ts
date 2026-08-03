@@ -76,6 +76,16 @@ export class FakePaymentProvider implements PaymentProvider {
   private readonly script: ScriptedOutcome[] = [];
   /** Every charge call, including ones whose response was "lost". */
   readonly attempts: string[] = [];
+  /**
+   * The `subscriptionRef` sent on every charge call, in order.
+   *
+   * Exists specifically so a test can prove which value actually reaches the
+   * provider. `attemptCharge` once sent the wrong one — our internal
+   * subscription row id rather than the Payfast mandate token — and no test
+   * caught it, because nothing here checked what was received versus what
+   * was merely returned.
+   */
+  readonly subscriptionRefs: string[] = [];
 
   /** Queue outcomes, consumed in order. Defaults to success when empty. */
   scriptOutcomes(...outcomes: ScriptedOutcome[]): void {
@@ -88,6 +98,7 @@ export class FakePaymentProvider implements PaymentProvider {
     amountCents: number;
   }): Promise<ChargeOutcome> {
     this.attempts.push(input.idempotencyKey);
+    this.subscriptionRefs.push(input.subscriptionRef);
 
     // A key we have already settled must never be charged again — this is what
     // a real provider's idempotency guarantees, and modelling it here means

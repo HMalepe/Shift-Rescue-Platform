@@ -173,6 +173,19 @@ export async function attemptCharge(
       attempt: subscriptionCharges.attempt,
       providerRef: subscriptionCharges.providerRef,
       pharmacyId: subscriptions.pharmacyId,
+      /*
+       * THE fix. This used to be missing, and `subscriptionRef` below was
+       * built from `charge.subscriptionId` — OUR internal row id — instead of
+       * this. Against `FakePaymentProvider` that is invisible: the fake keys
+       * its in-memory map by whatever string it is handed, so an internal
+       * UUID works exactly as well as a real token. Against the real
+       * `PayfastPaymentProvider`, which builds
+       * `/subscriptions/${subscriptionRef}/adhoc`, sending our UUID means
+       * Payfast is asked to charge a mandate it has never heard of — every
+       * production charge would have failed, and no test caught it because
+       * every test in this file runs against the fake.
+       */
+      mandateRef: subscriptions.providerRef,
     })
     .from(subscriptionCharges)
     .innerJoin(subscriptions, eq(subscriptions.id, subscriptionCharges.subscriptionId))
@@ -181,6 +194,25 @@ export async function attemptCharge(
 
   if (!charge) {
     throw new DomainError("CHARGE_NOT_FOUND", "Charge does not exist", { chargeId });
+  }
+
+  if (!charge.mandateRef) {
+    /*
+     * A subscription with no payment mandate on file cannot be charged —
+     * there is nothing for `subscriptionRef` to name. This is not a decline
+     * (the retry ladder does not apply) and not a provider outage (`lookup`
+     * has nothing to look up either): it is a subscription that was created
+     * before `billing.subscribe`'s Payfast tokenization step completed, or
+     * one where it failed silently. Thrown rather than treated as `unknown`,
+     * so it does not quietly burn an hourly retry loop against a mandate that
+     * will never appear on its own — someone has to notice and re-run
+     * subscribe.
+     */
+    throw new DomainError(
+      "SUBSCRIPTION_NOT_TOKENIZED",
+      "Subscription has no payment method on file",
+      { subscriptionId: charge.subscriptionId },
+    );
   }
 
   if (charge.status === "succeeded") {
@@ -231,7 +263,7 @@ export async function attemptCharge(
 
   const outcome = await deps.provider.charge({
     idempotencyKey,
-    subscriptionRef: charge.subscriptionId,
+    subscriptionRef: charge.mandateRef,
     amountCents: charge.amountCents,
   });
 

@@ -54,6 +54,8 @@ export type DomainErrorCode =
   // §2 billing
   | "SUBSCRIPTION_NOT_FOUND"
   | "SUBSCRIPTION_CANCELLED"
+  | "SUBSCRIPTION_ALREADY_ACTIVE"
+  | "SUBSCRIPTION_NOT_TOKENIZED"
   | "CHARGE_NOT_FOUND";
 
 export class DomainError extends Error {

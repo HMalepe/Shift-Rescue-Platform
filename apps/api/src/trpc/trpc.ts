@@ -110,6 +110,12 @@ const HTTP_BY_DOMAIN_CODE: Partial<
   // §6 messaging. A closed thread is a state conflict, not a permission
   // problem: the caller IS a participant, the window has simply passed.
   THREAD_CLOSED: "CONFLICT",
+  // §2 billing / Subscribe
+  SUBSCRIPTION_NOT_FOUND: "NOT_FOUND",
+  SUBSCRIPTION_ALREADY_ACTIVE: "CONFLICT",
+  SUBSCRIPTION_CANCELLED: "CONFLICT",
+  SUBSCRIPTION_NOT_TOKENIZED: "CONFLICT",
+  CHARGE_NOT_FOUND: "NOT_FOUND",
 };
 
 const withDomainErrors = t.middleware(async ({ next }) => {

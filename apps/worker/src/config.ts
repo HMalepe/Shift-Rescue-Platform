@@ -74,6 +74,21 @@ const schema = z.object({
 
   PAYFAST_MERCHANT_ID: z.string().optional(),
   PAYFAST_MERCHANT_KEY: z.string().optional(),
+  /**
+   * Required for signed calls in practice even though Payfast lists it as
+   * optional — see the note on `PayfastConfig.passphrase`. Without it, every
+   * signature this worker sends is simply wrong, and Payfast rejects it
+   * looking like a credentials problem rather than a missing setting.
+   */
+  PAYFAST_PASSPHRASE: z.string().optional(),
+  /**
+   * Overrides the adhoc-billing API host, for a sandbox account. Left as an
+   * explicit URL rather than a PAYFAST_SANDBOX boolean deliberately: this
+   * codebase has no live Payfast sandbox access to confirm the exact sandbox
+   * hostname against, and guessing one would be worse than requiring it be
+   * set from whatever Payfast's own account dashboard actually shows.
+   */
+  PAYFAST_BASE_URL: z.string().url().optional(),
 
   /** §0.1 — see apps/api/src/config.ts for the reasoning. */
   ALERT_WEBHOOK_URL: z.string().url().optional(),

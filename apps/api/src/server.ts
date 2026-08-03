@@ -21,6 +21,7 @@ import {
   type ErrorReporter,
 } from "@locum/observability";
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
+import { registerPayfastItnWebhook } from "./payfast/itn-webhook";
 import { registerAuthRoutes } from "./routes/auth";
 import {
   fastifyTRPCPlugin,
@@ -49,6 +50,8 @@ export interface ServerDeps {
   readonly whatsappSender?: WhatsAppSender;
   /** Injected by tests so alerting can be asserted without a receiver. */
   readonly reporter?: ErrorReporter;
+  /** Overridable so tests can stub Payfast's postback-validate call. */
+  readonly payfastFetchImpl?: typeof fetch;
 }
 
 export async function buildServer(
@@ -190,6 +193,11 @@ export async function buildServer(
   });
 
   registerTwilioStatusWebhook(app, { db, config });
+  registerPayfastItnWebhook(app, {
+    db,
+    config,
+    ...(deps.payfastFetchImpl !== undefined && { fetchImpl: deps.payfastFetchImpl }),
+  });
 
   /*
    * tRPC. Mounted last so the explicit REST routes above (auth, webhooks) keep

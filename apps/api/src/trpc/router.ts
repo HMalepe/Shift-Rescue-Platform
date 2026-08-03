@@ -8,6 +8,7 @@ import { messagesRouter } from "./routers/messages";
 import { reputationRouter } from "./routers/reputation";
 import { opsRouter } from "./routers/ops";
 import { privacyRouter } from "./routers/privacy";
+import { billingRouter } from "./routers/billing";
 
 export const appRouter = router({
   /** Cheap authenticated-or-not probe, used by clients to decide on a refresh. */
@@ -25,6 +26,7 @@ export const appRouter = router({
   reputation: reputationRouter,
   ops: opsRouter,
   privacy: privacyRouter,
+  billing: billingRouter,
 });
 
 /** Consumed by apps/web and apps/mobile for end-to-end type safety. */

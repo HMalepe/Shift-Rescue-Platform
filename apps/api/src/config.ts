@@ -130,6 +130,35 @@ const schema = z.object({
   S3_ENDPOINT: z.string().optional(),
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
+
+  /**
+   * §2 — Payfast tokenization ("Subscribe"). All three required together; a
+   * merchant id/key pair with no passphrase signs every request wrong rather
+   * than failing loudly, so `assertProductionReady` treats a partial set the
+   * same as none at all.
+   */
+  PAYFAST_MERCHANT_ID: z.string().optional(),
+  PAYFAST_MERCHANT_KEY: z.string().optional(),
+  PAYFAST_PASSPHRASE: z.string().optional(),
+  /** Hosted checkout page the browser is redirected to. */
+  PAYFAST_PROCESS_URL: z.string().url().optional(),
+  /**
+   * Where Payfast redirects the manager's BROWSER after paying — the Vercel
+   * dashboard, not this API. `PUBLIC_BASE_URL` above is a different thing: it
+   * is what Payfast calls server-to-server for the ITN, and always this API.
+   * Conflating the two would send a manager's browser to a bare JSON API
+   * after checkout instead of back to the dashboard.
+   */
+  DASHBOARD_BASE_URL: z.string().url().default("http://localhost:3001"),
+  /** ITN postback-validate host — see `.env.example` for why this is not a boolean. */
+  PAYFAST_ITN_HOST: z.string().url().optional(),
+  /**
+   * §2's flat monthly fee. No figure is fixed in the product spec, so this is
+   * a configuration value rather than a hardcoded constant — R899 is a
+   * placeholder used throughout this codebase's tests, not a pricing decision
+   * anyone has actually made.
+   */
+  SUBSCRIPTION_MONTHLY_CENTS: z.coerce.number().int().positive().default(89_900),
 });
 
 export type Config = z.infer<typeof schema>;
@@ -179,6 +208,22 @@ export function assertProductionReady(
   if (config.NODE_ENV !== "production") return;
 
   const problems: string[] = [];
+
+  /*
+   * §2 — a production API with no Payfast credentials cannot sign a Subscribe
+   * redirect at all. This is deliberately caught here rather than left to
+   * fail at the first manager who tries to subscribe: same reasoning as every
+   * other guard in this function.
+   */
+  const payfastConfigured =
+    config.PAYFAST_MERCHANT_ID !== undefined &&
+    config.PAYFAST_MERCHANT_KEY !== undefined &&
+    config.PAYFAST_PASSPHRASE !== undefined;
+  if (!payfastConfigured) {
+    problems.push(
+      "PAYFAST_MERCHANT_ID / PAYFAST_MERCHANT_KEY / PAYFAST_PASSPHRASE are not all set — the Subscribe flow cannot sign a redirect",
+    );
+  }
 
   /*
    * §12.1 requires uploads to be "scanned for malware before storage". The

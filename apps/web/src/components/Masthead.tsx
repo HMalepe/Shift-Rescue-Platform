@@ -21,6 +21,7 @@ const NAV: Record<Role, ReadonlyArray<{ href: string; label: string }>> = {
   manager: [
     { href: "/shifts", label: "Shifts" },
     { href: "/shifts/new", label: "Post a shift" },
+    { href: "/billing", label: "Billing" },
   ],
   locum: [
     { href: "/browse", label: "Find shifts" },

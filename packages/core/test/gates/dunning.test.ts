@@ -38,7 +38,10 @@ function deps(provider: FakePaymentProvider, overrides: Partial<DunningDeps> = {
   return { provider, ...overrides } as DunningDeps;
 }
 
-async function makeSubscription(monthlyCents = 89_900) {
+async function makeSubscription(
+  monthlyCents = 89_900,
+  options: { tokenized?: boolean } = {},
+) {
   const [pharmacy] = await db
     .insert(s.pharmacies)
     .values({
@@ -50,12 +53,19 @@ async function makeSubscription(monthlyCents = 89_900) {
     .returning({ id: s.pharmacies.id });
   pharmacyIds.push(pharmacy!.id);
 
+  const tokenized = options.tokenized ?? true;
+
   const [subscription] = await db
     .insert(s.subscriptions)
     .values({
       pharmacyId: pharmacy!.id,
       status: "active",
       provider: "payfast",
+      // The actual Payfast mandate token `attemptCharge` sends as
+      // `subscriptionRef`. Every existing test needs one now that a missing
+      // mandate is a thrown error rather than a silently-wrong charge target
+      // — see the regression this guards against in dunning.ts.
+      ...(tokenized ? { providerRef: `pf_token_${Date.now()}${Math.random()}` } : {}),
       monthlyCents,
       currentPeriodStart: new Date(Date.now() - 10 * 86_400_000),
       currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000),
@@ -108,6 +118,71 @@ describe("GATE billing.dunning — the happy path", () => {
     const result = await attemptCharge(db, deps(provider), chargeId);
     expect(result.outcome).toBe("succeeded");
     expect(await statusOf(subscriptionId)).toBe("active");
+  });
+
+  it("sends the subscription's PAYFAST MANDATE, not our internal row id", async () => {
+    /*
+     * The regression this guards against: `attemptCharge` used to send
+     * `subscriptionCharges.subscriptionId` (our own row) as `subscriptionRef`
+     * instead of `subscriptions.providerRef` (the actual token Payfast
+     * issued). `FakePaymentProvider` cannot tell the difference — it accepts
+     * any string — which is exactly why no test caught it before this one was
+     * written to check the value received rather than only the outcome
+     * returned.
+     */
+    const [pharmacy] = await db
+      .insert(s.pharmacies)
+      .values({
+        name: `Dunning Mandate Pharmacy ${Date.now()}${Math.random()}`,
+        addressLine: "1 Road",
+        city: "Johannesburg",
+        location: JHB,
+      })
+      .returning({ id: s.pharmacies.id });
+    pharmacyIds.push(pharmacy!.id);
+
+    const mandateToken = `pf_token_${Date.now()}`;
+    const [subscription] = await db
+      .insert(s.subscriptions)
+      .values({
+        pharmacyId: pharmacy!.id,
+        status: "active",
+        provider: "payfast",
+        providerRef: mandateToken,
+        monthlyCents: 89_900,
+        currentPeriodStart: new Date(Date.now() - 10 * 86_400_000),
+        currentPeriodEnd: new Date(Date.now() + 20 * 86_400_000),
+      })
+      .returning({ id: s.subscriptions.id });
+
+    const provider = new FakePaymentProvider();
+    const { chargeId } = await openPeriodCharge(db, subscription!.id);
+    await attemptCharge(db, deps(provider), chargeId);
+
+    expect(provider.subscriptionRefs).toEqual([mandateToken]);
+    expect(provider.subscriptionRefs[0]).not.toBe(subscription!.id);
+  });
+
+  it("refuses to charge a subscription with no payment mandate on file", async () => {
+    /*
+     * A subscription created before `billing.subscribe`'s Payfast tokenization
+     * step completes — or one where it silently failed — has nothing for
+     * `subscriptionRef` to name. This must be a thrown error, not a charge
+     * attempt with a garbage reference and not a silent `unknown`: the retry
+     * ladder does not apply to "we never had a way to bill this", and treating
+     * it as a transient outage would burn an hourly retry forever against a
+     * mandate that will never appear on its own.
+     */
+    const { subscriptionId } = await makeSubscription(89_900, { tokenized: false });
+    const provider = new FakePaymentProvider();
+
+    const { chargeId } = await openPeriodCharge(db, subscriptionId);
+
+    await expect(attemptCharge(db, deps(provider), chargeId)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_NOT_TOKENIZED",
+    });
+    // Nothing was sent to the provider at all.
+    expect(provider.attempts).toHaveLength(0);
   });
 
   it("folds unbilled late-cancellation fees into the invoice (§9)", async () => {
