@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import {
   cancellationFees,
   subscriptionCharges,
@@ -70,10 +70,40 @@ export interface ChargeAttemptResult {
  * tiny transaction — which would cost more in provider fees than the R10 it
  * collects.
  */
+export interface OpenedCharge {
+  readonly chargeId: string;
+  readonly amountCents: number;
+  readonly feeCount: number;
+}
+
+export interface AdvancePeriod {
+  readonly start: Date;
+  readonly end: Date;
+}
+
+export function openPeriodCharge(
+  db: Database,
+  subscriptionId: string,
+): Promise<OpenedCharge>;
+export function openPeriodCharge(
+  db: Database,
+  subscriptionId: string,
+  opts: { readonly advancePeriod: AdvancePeriod },
+): Promise<OpenedCharge | null>;
+/**
+ * Opens the charge for a subscription period, folding in any unbilled
+ * late-cancellation fees (§9 — "R10 is added to the month's subscription").
+ *
+ * The fees are attached to the charge here, not at cancellation time, so a fee
+ * incurred mid-period rides on the next invoice rather than triggering its own
+ * tiny transaction — which would cost more in provider fees than the R10 it
+ * collects.
+ */
 export async function openPeriodCharge(
   db: Database,
   subscriptionId: string,
-): Promise<{ chargeId: string; amountCents: number; feeCount: number }> {
+  opts: { readonly advancePeriod?: AdvancePeriod } = {},
+): Promise<OpenedCharge | null> {
   return db.transaction(async (tx) => {
     const [subscription] = await tx
       .select({
@@ -85,6 +115,11 @@ export async function openPeriodCharge(
       })
       .from(subscriptions)
       .where(eq(subscriptions.id, subscriptionId))
+      // Locked because `rolloverDuePeriods` selects candidates outside this
+      // transaction; without the lock, two overlapping sweeps (a slow run
+      // still in flight when the next tick fires) could both pass the
+      // "still due" check and open two charges for the same period.
+      .for("update")
       .limit(1);
 
     if (!subscription) {
@@ -98,6 +133,22 @@ export async function openPeriodCharge(
         "Cannot bill a cancelled subscription",
         { subscriptionId },
       );
+    }
+    if (opts.advancePeriod && subscription.status !== "active") {
+      /*
+       * The rollover path only ever wants a subscription whose PREVIOUS
+       * period is fully settled. If dunning has since moved it to
+       * `past_due` or `restricted` — a race with this exact sweep, since
+       * both read the row outside a lock before this transaction — opening
+       * a second charge on top of an unresolved one would let the ladder
+       * for period N and a brand-new charge for period N+1 run at once,
+       * and a pharmacy could pay one and still show restricted from the
+       * other. `null`, not a thrown error: this is not a failure, it is the
+       * rollover sweep finding nothing left to do here this tick. The next
+       * tick tries again once dunning resolves the subscription one way or
+       * the other.
+       */
+      return null;
     }
 
     const unbilled = await tx
@@ -140,6 +191,22 @@ export async function openPeriodCharge(
             `(${unbilled.map((f) => `'${f.id}'`).join(",")})`,
           )}`,
         );
+    }
+
+    if (opts.advancePeriod) {
+      /*
+       * Advanced in the SAME transaction as the charge insert above — a
+       * crash between the two is impossible, which is exactly what stops
+       * the next sweep tick from finding this subscription still "due" and
+       * opening a second charge for the period that just got one.
+       */
+      await tx
+        .update(subscriptions)
+        .set({
+          currentPeriodStart: opts.advancePeriod.start,
+          currentPeriodEnd: opts.advancePeriod.end,
+        })
+        .where(eq(subscriptions.id, subscriptionId));
     }
 
     return {
@@ -440,9 +507,20 @@ export async function processDueCharges(
     .select({ id: subscriptionCharges.id })
     .from(subscriptionCharges)
     .where(
-      and(
-        sql`${subscriptionCharges.status} in ('retrying', 'pending')`,
-        lte(subscriptionCharges.nextRetryAt, now),
+      /*
+       * `pending` means "never attempted" and `openPeriodCharge` never sets
+       * `next_retry_at` on insert — it stays NULL. `lte(nextRetryAt, now)`
+       * over the whole set used to be applied to BOTH statuses, and in SQL
+       * `NULL <= now` is NULL, which the WHERE clause treats as false. A
+       * freshly opened charge was therefore invisible to this query forever,
+       * found only by manually setting next_retry_at, which is exactly what
+       * every existing test did instead of exercising the real path. A
+       * `pending` charge is due unconditionally; only `retrying` respects
+       * the scheduled retry time.
+       */
+      or(
+        eq(subscriptionCharges.status, "pending"),
+        and(eq(subscriptionCharges.status, "retrying"), lte(subscriptionCharges.nextRetryAt, now)),
       ),
     )
     .limit(limit);
@@ -450,6 +528,63 @@ export async function processDueCharges(
   const results: ChargeAttemptResult[] = [];
   for (const charge of due) {
     results.push(await attemptCharge(db, deps, charge.id));
+  }
+  return results;
+}
+
+/** Default billing cycle length. §2 has no product decision on calendar-month
+ * billing vs a fixed 30 days; 30 days is simpler to reason about (no
+ * February drift) and is what `beginSubscribe`/`activateSubscription` already
+ * use for period 1. */
+const DEFAULT_PERIOD_LENGTH_MS = 30 * 86_400_000;
+
+/**
+ * §2 — the worker entry point for month 2 onward.
+ *
+ * `openPeriodCharge` opens a charge for a subscription's CURRENT period; it
+ * does not advance that period, and nothing in production called it past the
+ * one time `activateSubscription` runs it implicitly for period 1. Without
+ * this, every subscription would bill once at Subscribe and never again —
+ * `current_period_end` would sail past `now` forever with no charge and no
+ * error, the quietest possible way to stop collecting money.
+ *
+ * Deliberately restricted to `active` subscriptions whose period has
+ * actually ended: a `past_due` or `restricted` subscription is mid-ladder on
+ * an EARLIER charge, and opening a new period's charge on top of that would
+ * let two billing cycles run at once. It waits for dunning to resolve the
+ * old one first — see `openPeriodCharge`'s `advancePeriod` branch, which
+ * re-checks this with a row lock rather than trusting this query's snapshot.
+ */
+export async function rolloverDuePeriods(
+  db: Database,
+  opts: {
+    readonly limit?: number;
+    readonly now?: () => Date;
+    readonly periodLengthMs?: number;
+  } = {},
+): Promise<ReadonlyArray<{ readonly subscriptionId: string } & OpenedCharge>> {
+  const now = opts.now?.() ?? new Date();
+  const periodLengthMs = opts.periodLengthMs ?? DEFAULT_PERIOD_LENGTH_MS;
+  const limit = opts.limit ?? 100;
+
+  const due = await db
+    .select({ id: subscriptions.id, periodEnd: subscriptions.currentPeriodEnd })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.status, "active"), lte(subscriptions.currentPeriodEnd, now)))
+    .limit(limit);
+
+  const results: Array<{ subscriptionId: string } & OpenedCharge> = [];
+  for (const sub of due) {
+    const opened = await openPeriodCharge(db, sub.id, {
+      advancePeriod: {
+        start: sub.periodEnd,
+        end: new Date(sub.periodEnd.getTime() + periodLengthMs),
+      },
+    });
+    // `null` means the status check inside the transaction lost the race —
+    // dunning moved this subscription off `active` between this query and
+    // that lock. Not an error; the next tick picks it up once resolved.
+    if (opened) results.push({ subscriptionId: sub.id, ...opened });
   }
   return results;
 }

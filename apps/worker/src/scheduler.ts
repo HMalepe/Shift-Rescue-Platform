@@ -8,6 +8,7 @@ import {
   runDrainDeferredMessages,
   runProcessDueCharges,
   runReportStalledSends,
+  runRolloverBillingPeriods,
   runSweepQuotas,
   type JobContext,
   type JobLogger,
@@ -80,6 +81,8 @@ export function startScheduler(
           return runDrainDeferredMessages(ctx, deps.drain, config.DRAIN_BATCH_SIZE);
         case JOB_NAMES.processDueCharges:
           return runProcessDueCharges(ctx, deps.dunning, config.DUNNING_BATCH_SIZE);
+        case JOB_NAMES.rolloverBillingPeriods:
+          return runRolloverBillingPeriods(ctx, config.DUNNING_BATCH_SIZE);
         case JOB_NAMES.reportStalledSends:
           return runReportStalledSends(ctx);
         case JOB_NAMES.sweepQuotas:
@@ -146,6 +149,11 @@ export function desiredSchedules(
   return [
     { name: JOB_NAMES.drainDeferredMessages, every: config.DRAIN_INTERVAL_MS },
     { name: JOB_NAMES.processDueCharges, every: config.DUNNING_INTERVAL_MS },
+    // Deliberately the same cadence as processDueCharges: a charge this
+    // opens is only actually collected on the NEXT firing of that job, so
+    // running rollover any less often just adds a full cycle of latency
+    // between "period ended" and "we tried to collect".
+    { name: JOB_NAMES.rolloverBillingPeriods, every: config.DUNNING_INTERVAL_MS },
     // Stall triage is diagnostic, not operational; a fifth of the drain
     // cadence is plenty and keeps it out of the drain's way.
     { name: JOB_NAMES.reportStalledSends, every: config.DRAIN_INTERVAL_MS * 5 },

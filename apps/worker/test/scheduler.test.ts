@@ -49,6 +49,36 @@ function config(overrides: Partial<WorkerConfig> = {}): WorkerConfig {
 }
 
 const createdUserIds: string[] = [];
+const createdPharmacyIds: string[] = [];
+
+async function makePastDueSubscription(): Promise<string> {
+  const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const [pharmacy] = await db
+    .insert(s.pharmacies)
+    .values({
+      name: `Scheduler Rollover Pharmacy ${tag}`,
+      addressLine: "1 Road",
+      city: "Johannesburg",
+      location: { lng: 28.0473, lat: -26.2041 },
+    })
+    .returning({ id: s.pharmacies.id });
+  createdPharmacyIds.push(pharmacy!.id);
+
+  const [subscription] = await db
+    .insert(s.subscriptions)
+    .values({
+      pharmacyId: pharmacy!.id,
+      status: "active",
+      provider: "payfast",
+      providerRef: `pf_token_${tag}`,
+      monthlyCents: 89_900,
+      currentPeriodStart: new Date(Date.now() - 40 * 86_400_000),
+      currentPeriodEnd: new Date(Date.now() - 3_600_000),
+    })
+    .returning({ id: s.subscriptions.id });
+
+  return subscription!.id;
+}
 
 /**
  * Waits until a condition holds, instead of sleeping for a guessed interval.
@@ -147,6 +177,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (createdPharmacyIds.length > 0) {
+    const subs = await db
+      .select({ id: s.subscriptions.id })
+      .from(s.subscriptions)
+      .where(inArray(s.subscriptions.pharmacyId, createdPharmacyIds));
+    const subIds = subs.map((r) => r.id);
+    if (subIds.length > 0) {
+      await db
+        .delete(s.subscriptionCharges)
+        .where(inArray(s.subscriptionCharges.subscriptionId, subIds));
+      await db.delete(s.subscriptions).where(inArray(s.subscriptions.id, subIds));
+    }
+    await db.delete(s.pharmacies).where(inArray(s.pharmacies.id, createdPharmacyIds));
+  }
   if (createdUserIds.length > 0) {
     await db
       .delete(s.whatsappMessageLog)
@@ -205,6 +249,52 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         .from(s.whatsappMessageLog)
         .where(eq(s.whatsappMessageLog.userId, userId));
       expect(row!.status).toBe("sent");
+    } finally {
+      await scheduler.close();
+    }
+  });
+
+  it("a scheduled rollover firing opens the next period's charge for real", async () => {
+    /*
+     * The seam test for `billing.rollover-periods`. `rolloverDuePeriods`
+     * itself is exercised thoroughly in @locum/core's dunning gate tests;
+     * what matters here is that the job dispatched through BullMQ actually
+     * reaches it and writes a real row, since this job did not exist in
+     * production before — nothing ever called it, and a subscription's
+     * period end could sail past `now` forever with no error.
+     */
+    const subscriptionId = await makePastDueSubscription();
+    const log = collectingLogger();
+
+    const scheduler = startScheduler(
+      { ...config(), REDIS_URL },
+      {
+        db,
+        log,
+        drain: { sender: new FakeWhatsAppSender(), workerId: "test-worker" },
+        dunning: { provider: new FakePaymentProvider() },
+        reporter: new RecordingReporter(),
+      },
+    );
+    const queue = scheduler.queue;
+
+    try {
+      await scheduler.queueEvents.waitUntilReady();
+      const job = await queue.add(JOB_NAMES.rolloverBillingPeriods, {});
+      await job.waitUntilFinished(scheduler.queueEvents);
+
+      const [charge] = await db
+        .select({ status: s.subscriptionCharges.status, amountCents: s.subscriptionCharges.amountCents })
+        .from(s.subscriptionCharges)
+        .where(eq(s.subscriptionCharges.subscriptionId, subscriptionId));
+      expect(charge?.status).toBe("pending");
+      expect(charge?.amountCents).toBe(89_900);
+
+      const [sub] = await db
+        .select({ periodEnd: s.subscriptions.currentPeriodEnd })
+        .from(s.subscriptions)
+        .where(eq(s.subscriptions.id, subscriptionId));
+      expect(sub!.periodEnd.getTime()).toBeGreaterThan(Date.now());
     } finally {
       await scheduler.close();
     }

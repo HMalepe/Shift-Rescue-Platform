@@ -8,6 +8,7 @@ import {
   canPostShifts,
   openPeriodCharge,
   processDueCharges,
+  rolloverDuePeriods,
   type DunningDeps,
 } from "../../src/index";
 import { connect } from "../helpers/fixtures";
@@ -453,6 +454,32 @@ describe("GATE billing.dunning — the worker", () => {
     expect(ids).not.toContain(future.chargeId);
   });
 
+  it("picks up a freshly opened charge with no next_retry_at set (the real openPeriodCharge shape)", async () => {
+    /*
+     * The regression this guards against: the WHERE clause used to apply
+     * `next_retry_at <= now` to BOTH 'pending' and 'retrying' rows, and SQL's
+     * `NULL <= now` is NULL — which a WHERE clause treats as false.
+     * `openPeriodCharge` never sets `next_retry_at` on insert, so every
+     * charge it ever opened was invisible to this query forever. Every OTHER
+     * test in this file works around it by manually setting next_retry_at
+     * before calling processDueCharges — this one calls openPeriodCharge and
+     * changes nothing else, which is the actual path production goes through.
+     */
+    const { subscriptionId } = await makeSubscription();
+    const provider = new FakePaymentProvider();
+
+    const opened = await openPeriodCharge(db, subscriptionId);
+
+    const [row] = await db
+      .select({ nextRetryAt: s.subscriptionCharges.nextRetryAt })
+      .from(s.subscriptionCharges)
+      .where(eq(s.subscriptionCharges.id, opened.chargeId));
+    expect(row?.nextRetryAt).toBeNull();
+
+    const results = await processDueCharges(db, deps(provider));
+    expect(results.map((r) => r.chargeId)).toContain(opened.chargeId);
+  });
+
   it("re-attempting a settled charge is a no-op", async () => {
     const { subscriptionId } = await makeSubscription();
     const provider = new FakePaymentProvider();
@@ -478,5 +505,136 @@ describe("GATE billing.dunning — the worker", () => {
     await expect(openPeriodCharge(db, subscriptionId)).rejects.toMatchObject({
       code: "SUBSCRIPTION_CANCELLED",
     });
+  });
+});
+
+describe("GATE billing.dunning — month 2+ period rollover", () => {
+  /*
+   * Nothing in production ever called `openPeriodCharge` past the one time
+   * `activateSubscription` runs it implicitly for period 1 — every
+   * subscription billed exactly once, ever, and `current_period_end` would
+   * sail past `now` silently forever. `rolloverDuePeriods` is the worker
+   * entry point that closes that gap.
+   */
+  it("opens the next period's charge and advances the period for a subscription whose period has ended", async () => {
+    const { subscriptionId } = await makeSubscription();
+    const pastEnd = new Date(Date.now() - 3_600_000);
+    await db
+      .update(s.subscriptions)
+      .set({ currentPeriodEnd: pastEnd })
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    const results = await rolloverDuePeriods(db);
+    const mine = results.find((r) => r.subscriptionId === subscriptionId);
+    expect(mine).toBeDefined();
+    expect(mine?.amountCents).toBe(89_900);
+
+    const [row] = await db
+      .select({
+        periodStart: s.subscriptions.currentPeriodStart,
+        periodEnd: s.subscriptions.currentPeriodEnd,
+      })
+      .from(s.subscriptions)
+      .where(eq(s.subscriptions.id, subscriptionId));
+    expect(row?.periodStart?.getTime()).toBe(pastEnd.getTime());
+    expect(row?.periodEnd?.getTime()).toBe(pastEnd.getTime() + 30 * 86_400_000);
+  });
+
+  it("leaves a subscription whose period has not ended alone", async () => {
+    const { subscriptionId } = await makeSubscription();
+    // makeSubscription's default period ends 20 days in the future.
+    const results = await rolloverDuePeriods(db);
+    expect(results.map((r) => r.subscriptionId)).not.toContain(subscriptionId);
+  });
+
+  it("does not open a second charge for a subscription that is past_due, not active", async () => {
+    const { subscriptionId } = await makeSubscription();
+    await db
+      .update(s.subscriptions)
+      .set({ status: "past_due", currentPeriodEnd: new Date(Date.now() - 3_600_000) })
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    const results = await rolloverDuePeriods(db);
+    expect(results.map((r) => r.subscriptionId)).not.toContain(subscriptionId);
+
+    // The period must be untouched too — silently advancing it would let the
+    // eventual dunning recovery collect for a period that was never actually
+    // billed.
+    const [row] = await db
+      .select({ periodEnd: s.subscriptions.currentPeriodEnd })
+      .from(s.subscriptions)
+      .where(eq(s.subscriptions.id, subscriptionId));
+    expect(row?.periodEnd?.getTime()).toBeLessThan(Date.now());
+  });
+
+  it("is safe to call twice in a row — the second call finds nothing left due", async () => {
+    const { subscriptionId } = await makeSubscription();
+    await db
+      .update(s.subscriptions)
+      .set({ currentPeriodEnd: new Date(Date.now() - 3_600_000) })
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    const first = await rolloverDuePeriods(db);
+    expect(first.map((r) => r.subscriptionId)).toContain(subscriptionId);
+
+    const second = await rolloverDuePeriods(db);
+    expect(second.map((r) => r.subscriptionId)).not.toContain(subscriptionId);
+
+    const charges = await db
+      .select({ id: s.subscriptionCharges.id })
+      .from(s.subscriptionCharges)
+      .where(eq(s.subscriptionCharges.subscriptionId, subscriptionId));
+    expect(charges).toHaveLength(1);
+  });
+
+  it("folds unbilled cancellation fees into the rolled-over charge, same as a direct openPeriodCharge call", async () => {
+    const { subscriptionId, pharmacyId } = await makeSubscription();
+    await db
+      .update(s.subscriptions)
+      .set({ currentPeriodEnd: new Date(Date.now() - 3_600_000) })
+      .where(eq(s.subscriptions.id, subscriptionId));
+
+    const [manager] = await db
+      .insert(s.users)
+      .values({ role: "manager", email: `rollover-mgr-${Date.now()}@test.invalid`, fullName: "M" })
+      .returning({ id: s.users.id });
+    const [locum] = await db
+      .insert(s.users)
+      .values({ role: "locum", email: `rollover-locum-${Date.now()}@test.invalid`, fullName: "L" })
+      .returning({ id: s.users.id });
+    await db.insert(s.locumProfiles).values({ userId: locum!.id });
+    const [shift] = await db
+      .insert(s.shifts)
+      .values({
+        pharmacyId,
+        createdBy: manager!.id,
+        startsAt: new Date(Date.now() + 48 * 3_600_000),
+        endsAt: new Date(Date.now() + 56 * 3_600_000),
+        hourlyRateCents: 45_000,
+        status: "open",
+        location: JHB,
+      })
+      .returning({ id: s.shifts.id });
+    const [booking] = await db
+      .insert(s.bookings)
+      .values({ shiftId: shift!.id, locumId: locum!.id, status: "cancelled_by_locum" })
+      .returning({ id: s.bookings.id });
+    await db.insert(s.cancellationFees).values({
+      bookingId: booking!.id,
+      subscriptionId,
+      amountCents: 1000,
+      noticeHours: 2,
+    });
+
+    const results = await rolloverDuePeriods(db);
+    const mine = results.find((r) => r.subscriptionId === subscriptionId);
+    expect(mine?.feeCount).toBe(1);
+    expect(mine?.amountCents).toBe(89_900 + 1000);
+
+    await db.delete(s.cancellationFees).where(eq(s.cancellationFees.subscriptionId, subscriptionId));
+    await db.delete(s.bookings).where(eq(s.bookings.shiftId, shift!.id));
+    await db.delete(s.shifts).where(eq(s.shifts.id, shift!.id));
+    await db.delete(s.locumProfiles).where(eq(s.locumProfiles.userId, locum!.id));
+    await db.delete(s.users).where(inArray(s.users.id, [manager!.id, locum!.id]));
   });
 });

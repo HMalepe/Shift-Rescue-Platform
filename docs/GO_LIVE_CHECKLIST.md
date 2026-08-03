@@ -72,6 +72,19 @@ Two separate paths, both now wired end to end — verify each once.
 - [ ] Subscription row's `status` moves to `active` with `provider_ref` set to
       the real Payfast mandate token, not empty.
 
+**Month 2+ rollover (existing active subscription, new billing period) — also not dashboard-triggerable:**
+
+- [ ] Seed/update an `active` subscription row with `current_period_end` in
+      the past.
+- [ ] Trigger the `billing.rollover-periods` worker job once (`railway run
+      --service worker ...` or wait for its schedule — same cadence as
+      dunning).
+- [ ] A new `subscription_charges` row appears with `status: pending`, and
+      the subscription's `current_period_start`/`current_period_end` have
+      advanced by 30 days.
+- [ ] Wait for (or trigger) `billing.process-due-charges` next — that pending
+      charge is what actually gets attempted.
+
 **Dunning (existing subscription going past-due) — still not dashboard-triggerable:**
 
 - [ ] Seed/insert a subscription row with a past due date.

@@ -3,6 +3,7 @@ import {
   findStalledSends,
   pendingBacklogSize,
   processDueCharges,
+  rolloverDuePeriods,
   sweepExpiredQuotas,
   type DrainDeps,
   type DunningDeps,
@@ -29,6 +30,7 @@ import type { Database } from "@locum/db";
 export const JOB_NAMES = {
   drainDeferredMessages: "messaging.drain-deferred",
   processDueCharges: "billing.process-due-charges",
+  rolloverBillingPeriods: "billing.rollover-periods",
   reportStalledSends: "messaging.report-stalled",
   sweepQuotas: "ratelimit.sweep",
 } as const;
@@ -103,6 +105,29 @@ export async function runProcessDueCharges(
       "charges with no definite answer from the provider — awaiting reconciliation",
     );
   }
+}
+
+/**
+ * §2 — open month 2+'s charge for every active subscription whose period has
+ * ended, and advance the period.
+ *
+ * This is the piece that was missing entirely: without it, `activateSubscription`
+ * bills a pharmacy exactly once, at Subscribe, and never again — the period
+ * end sails past `now` with no error and no charge. The opened charge lands
+ * in `subscription_charges` as `pending`; `runProcessDueCharges` above is
+ * what actually attempts it, on its own schedule, same as any other charge.
+ */
+export async function runRolloverBillingPeriods(
+  ctx: JobContext,
+  batchSize: number,
+): Promise<void> {
+  const results = await rolloverDuePeriods(ctx.db, { limit: batchSize });
+  if (results.length === 0) return;
+
+  ctx.log.info(
+    { rolledOver: results.length, totalCents: results.reduce((sum, r) => sum + r.amountCents, 0) },
+    "opened next-period charges",
+  );
 }
 
 /**
