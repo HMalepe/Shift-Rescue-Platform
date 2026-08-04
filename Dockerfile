@@ -57,7 +57,12 @@ COPY packages/observability/package.json packages/observability/
 COPY tools/loadtest/package.json tools/loadtest/
 COPY tools/devdata/package.json tools/devdata/
 
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+# No explicit `id=` on the cache mount: Railway's builder rejects a bare id
+# like `pnpm` (it wants cache mounts scoped per-service and errors instead of
+# silently namespacing it for you), and dropping `id=` lets BuildKit derive
+# one from the mount target — which works identically here, in GitHub
+# Actions, and on Railway, without hardcoding a builder-specific scheme.
+RUN --mount=type=cache,target=/pnpm/store \
     PNPM_HOME=/pnpm pnpm install --frozen-lockfile
 
 FROM node:22-bookworm-slim AS runtime
