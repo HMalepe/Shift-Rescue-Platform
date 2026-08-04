@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Locum Planner",
+    "slug": "locum-planner",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "locumplanner",
+    "android": {
+      "package": "za.co.locumplanner.app",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "ios": {
+      "bundleIdentifier": "za.co.locumplanner.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Confirms you arrived at the pharmacy when you check in. Your location is not tracked at any other time."
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Confirms you arrived at the pharmacy when you check in. Your location is not tracked at any other time."
+        }
+      ]
+    ]
+  }
+}

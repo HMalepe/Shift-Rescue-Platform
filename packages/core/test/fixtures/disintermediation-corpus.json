@@ -1,0 +1,1356 @@
+{
+  "$comment": [
+    "§14 — the disintermediation corpus.",
+    "",
+    "§14: '≥200 hand-labelled messages spanning true positives (phone numbers,",
+    "\"call me,\" \"let's sort this directly\") and known false positives (\"call the",
+    "pharmacy,\" \"the manager will call you about the roster\"). Generatable as a",
+    "starting draft; must be human-reviewed for labels before a false-positive",
+    "rate derived from it means anything.'",
+    "",
+    "This IS that starting draft, and every entry carries reviewed:false to say",
+    "so. The labels here were written by the same process that wrote the",
+    "regexes, which means a false-positive rate measured against them measures",
+    "the author's consistency, not the detector's accuracy. The harness in",
+    "test/gates/disintermediation.test.ts refuses to treat the number as real",
+    "until reviewed:true appears, and §15 keeps the gate open until then.",
+    "",
+    "To review: read each entry, correct the label if it is wrong, and set",
+    "reviewed to true. Entries a reviewer disagrees about are the valuable ones",
+    "— note why."
+  ],
+  "messages": [
+    {
+      "id": "pos-001",
+      "text": "Hi, easier if you just call me on 082 555 1234",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-002",
+      "text": "my number is 0731234567, ring anytime",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-003",
+      "text": "Save my cell: +27 82 555 9911",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-004",
+      "text": "0824567890 - thats me, whatsapp is fine",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-005",
+      "text": "Call me 083-555-0142 I'll explain the till setup",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-006",
+      "text": "here you go 27 71 555 8080",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-007",
+      "text": "(082) 555 6677 - after 5 is best",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-008",
+      "text": "My mobile is 0605551234 if the app plays up",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-009",
+      "text": "phone me on 0794445566 before you come in",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-010",
+      "text": "cell 0715559090",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-011",
+      "text": "Text me 0655554321 when you're outside",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-012",
+      "text": "whatsapp me +27825551111 please",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-013",
+      "text": "Try 073 555 22 33, the landline is useless",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-014",
+      "text": "its 0827775544, dont use the app it never notifies me",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-015",
+      "text": "0611239876 — I'm the one who does the ordering",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-016",
+      "text": "zero eight two five five five one two three four",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-017",
+      "text": "oh eight three, five five five, nine nine one one",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-018",
+      "text": "zero seven one double five five one two three",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-019",
+      "text": "its zero eight two triple five one two three four",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-020",
+      "text": "O82 555 1234 (thats an oh not a zero)",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-021",
+      "text": "my digits: zero six five five five four three two one",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-022",
+      "text": "email me at thabo.mokoena@gmail.com and I'll send the roster",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-023",
+      "text": "mail me on pharmacy.sandton@outlook.com, faster",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-024",
+      "text": "find me on telegram @nkosi_pharm",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-025",
+      "text": "Im on whatsapp: wa.me/27825551234",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-026",
+      "text": "add me on instagram @lindiwe.locum and DM me",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-027",
+      "text": "signal me, same number",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-028",
+      "text": "I'll dm you on facebook messenger instead",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-029",
+      "text": "lets sort this directly, the app takes forever",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-030",
+      "text": "can we just arrange this between us?",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-031",
+      "text": "Rather do it off the app, less admin",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-032",
+      "text": "shall we settle it privately? I'll pay cash on the day",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-033",
+      "text": "we can skip the platform for next month's shifts",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-034",
+      "text": "Do you want to handle this directly going forward",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-035",
+      "text": "cash arrangement suits me better if you're open to it",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-036",
+      "text": "Next time book me outside the system, saves us both hassle",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-037",
+      "text": "Lets do a private booking for the December shifts",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-038",
+      "text": "Can we arrange this ourselves, I know the owner",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-039",
+      "text": "I'd rather bypass the app for regular weeks",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-040",
+      "text": "direct deal? I'll do R30 less an hour",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-041",
+      "text": "just sort it out between us and I'll come in Saturday",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-042",
+      "text": "we don't need the platform for this one, do we",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-043",
+      "text": "Contact me directly and we'll work out the rest",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-044",
+      "text": "call me directly rather than going through here",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-045",
+      "text": "Confirmed for Tuesday 08:00. Also my cell is 0825551234 in case of traffic",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-046",
+      "text": "Great, see you then. call me on 073 555 0987 if the gate is locked",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-047",
+      "text": "I'll be there at 7. My number 0665554433 for the security guard",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-048",
+      "text": "Perfect. whatsapp me 0825550000, I check that more often",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "pos-049",
+      "text": "Yes I can do the weekend. text me 0715552222 to confirm times",
+      "label": "positive",
+      "reviewed": false
+    },
+    {
+      "id": "neg-001",
+      "text": "call the pharmacy on Monday and ask for Sipho",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-002",
+      "text": "the manager will call you about the roster",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-003",
+      "text": "Please call the pharmacy if you're running late",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-004",
+      "text": "I'll call the pharmacy landline when I arrive",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-005",
+      "text": "Someone from the pharmacy will call you tomorrow",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-006",
+      "text": "The area manager said she'll call about next week",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-007",
+      "text": "Call the store before 9, they open early",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive"
+    },
+    {
+      "id": "neg-008",
+      "text": "Ask them to call the pharmacy manager, not me",
+      "label": "negative",
+      "reviewed": false,
+      "note": "near-miss: 'call' + 'me' but not 'call me'"
+    },
+    {
+      "id": "neg-009",
+      "text": "Rate is R450 per hour, 8 hour shift",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-010",
+      "text": "Shift is 08:00 to 17:00 with a 30 min break",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-011",
+      "text": "We dispensed 1240 scripts last month",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-012",
+      "text": "Stock code 5501234 is the one that's short",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-013",
+      "text": "Invoice 20260801 should be in your portal",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-014",
+      "text": "The fridge must stay between 2 and 8 degrees",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-015",
+      "text": "Practice number 0453219 if SAPC ask",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-016",
+      "text": "We're at 12 Rivonia Road, shop 4",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-017",
+      "text": "Order 1000 units of the 500mg",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-018",
+      "text": "PIN for the alarm is 4471, don't write it down",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-019",
+      "text": "It's a 12 hour shift, 06:00 to 18:00",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-020",
+      "text": "R 1 250 for the day, is that ok",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-021",
+      "text": "Schedule 5 register is in the safe",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-022",
+      "text": "about 250 patients a day, sometimes 300",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-023",
+      "text": "Hi, are you available for Saturday's shift?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-024",
+      "text": "Yes I can do it, what time do I need to be there",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-025",
+      "text": "Parking is behind the building, use the blue gate",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-026",
+      "text": "Bring your SAPC card, reception will need it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-027",
+      "text": "The dispensary system is Unisolv, you know it?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-028",
+      "text": "I'm running about 10 minutes late, traffic on the M1",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-029",
+      "text": "Thanks for covering, the team really appreciated it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-030",
+      "text": "Do you need me to stay past 5?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-031",
+      "text": "Lunch is whenever it's quiet, no fixed time",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-032",
+      "text": "The scale in room 2 is broken, use the one at the front",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-033",
+      "text": "Who signs off the Schedule 6 register?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-034",
+      "text": "Can you confirm you're still coming Thursday",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-035",
+      "text": "I've accepted the shift, see you Tuesday",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-036",
+      "text": "Is there parking on site",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-037",
+      "text": "What's the dress code, do I need a white coat",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-038",
+      "text": "We use Nappi codes for the medical aids",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-039",
+      "text": "The locum before you left good notes, they're at the till",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-040",
+      "text": "Please arrive 15 minutes early for handover",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-041",
+      "text": "Great work today, would book you again",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-042",
+      "text": "I've marked you as a favourite for future shifts",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-043",
+      "text": "Unfortunately I need to cancel, I'm ill",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-044",
+      "text": "Sorry, something came up and I can't make Friday",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-045",
+      "text": "No problem, I'll post the shift again",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-046",
+      "text": "Are you SAPC registered for community pharmacy",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-047",
+      "text": "How many staff will be on with me",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-048",
+      "text": "There are two assistants and a cashier",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-049",
+      "text": "The medical aid switch was down all morning",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-050",
+      "text": "Can you do a double shift on the 14th and 15th",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-051",
+      "text": "I'd prefer mornings if that's possible",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-052",
+      "text": "Public holiday rate applies on the 16th",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-053",
+      "text": "Please clock in on the app when you arrive",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-054",
+      "text": "The check-in didn't work, my GPS was off",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-055",
+      "text": "Try again outside, the signal is bad inside the dispensary",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-056",
+      "text": "I've confirmed the booking on the platform",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-057",
+      "text": "Payment goes through your usual payroll, not through here",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-058",
+      "text": "Ask HR about the invoice, we don't handle that side",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-059",
+      "text": "The pharmacy manager is Nomsa, she'll show you around",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-060",
+      "text": "Storeroom key is with the front desk",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-061",
+      "text": "We had a stock take last week so shelves are moved around",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-062",
+      "text": "Any allergies I should know about for the tea run?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-063",
+      "text": "Kettle is in the back, help yourself",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-064",
+      "text": "The aircon is broken, dress cool",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-065",
+      "text": "Load shedding is 14:00 to 16:30 today, generator covers the fridges",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-066",
+      "text": "Stage 4 tonight so the alarm may go off",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-067",
+      "text": "Please don't leave before the night pharmacist arrives",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-068",
+      "text": "Shift swapped to Sunday, I've updated it on the app",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-069",
+      "text": "Can you take the 06:00 opening shift instead",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-070",
+      "text": "I'll be doing the vaccines, you handle the front",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-071",
+      "text": "We're short on the flu vaccine, order goes in Monday",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-072",
+      "text": "Courier comes at 11, sign for it please",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-073",
+      "text": "The dispensing error last week was mine, sorted now",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-074",
+      "text": "Please log any near-misses in the book",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-075",
+      "text": "Fridge temp log needs signing twice a day",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-076",
+      "text": "Do you have experience with compounding",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-077",
+      "text": "Only basic, mostly retail",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-078",
+      "text": "That's fine, we don't do much compounding",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-079",
+      "text": "Are you comfortable doing minor ailments",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-080",
+      "text": "Yes, done it for three years",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-081",
+      "text": "Great, the protocol folder is on the shelf",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-082",
+      "text": "I've rated the shift, thanks again",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-083",
+      "text": "Could you leave a rating when you get a chance",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-084",
+      "text": "The system says the shift is complete",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-085",
+      "text": "You forgot to check out, I've flagged it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-086",
+      "text": "Sorry, I'll remember next time",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-087",
+      "text": "Shift starts at 7 sharp, doors open 6:45",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-088",
+      "text": "Security will let you in the side entrance",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-089",
+      "text": "If nobody answers, wait at reception",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-090",
+      "text": "The previous locum said the printer jams, there's a trick to it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-091",
+      "text": "Ask the assistant, she knows the till codes",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-092",
+      "text": "We've had a lot of walk-ins this week",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-093",
+      "text": "Script volumes are up since the clinic opened next door",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-094",
+      "text": "Can you work the 24th? It's our busiest day",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-095",
+      "text": "I'm already booked that day, sorry",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-096",
+      "text": "No stress, I'll find someone else",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-097",
+      "text": "Would you consider a regular Thursday slot",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-098",
+      "text": "Possibly, let me check my schedule",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-099",
+      "text": "Let me know by Friday if you can",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-100",
+      "text": "I'll confirm once I hear back from the other pharmacy",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-101",
+      "text": "The rate is negotiable for regular work",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-102",
+      "text": "What are you offering for weekends",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-103",
+      "text": "Time and a half on Sundays",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-104",
+      "text": "That works, I'll take it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-105",
+      "text": "Please post it on the app and I'll accept",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-106",
+      "text": "Done, it should show in your feed now",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-107",
+      "text": "I can see it, accepted",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-108",
+      "text": "See you Tuesday then",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-109",
+      "text": "Looking forward to it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-110",
+      "text": "Have a good weekend",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-111",
+      "text": "Thanks, you too",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-112",
+      "text": "Morning, just confirming today is still on",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-113",
+      "text": "Yes all good, see you shortly",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-114",
+      "text": "I'm here, at the front counter",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-115",
+      "text": "Coming now, one second",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-116",
+      "text": "The alarm code changed, I'll meet you at the door",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-117",
+      "text": "New code is with the manager, ask when you arrive",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-118",
+      "text": "Everything went smoothly today, thanks",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-119",
+      "text": "Glad to hear it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-120",
+      "text": "Any feedback for me?",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-121",
+      "text": "None, you were great with the patients",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-122",
+      "text": "The medical aid rejected two claims, notes are in the system",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-123",
+      "text": "I'll follow up with them tomorrow",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-124",
+      "text": "Do you want me to do the ordering as well",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-125",
+      "text": "No, the manager does that on Mondays",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-126",
+      "text": "Understood",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-127",
+      "text": "Is there a lunch break on a 12 hour shift",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-128",
+      "text": "Yes, an hour, staggered with the assistant",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-129",
+      "text": "Perfect",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-130",
+      "text": "Reminder: your SAPC certificate expires next month",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-131",
+      "text": "Thanks, renewal is in progress",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-132",
+      "text": "Please upload the new one when it comes through",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-133",
+      "text": "Will do",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-134",
+      "text": "Your verification is still pending on our side",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-135",
+      "text": "I uploaded it yesterday",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-136",
+      "text": "Got it, approved now",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-137",
+      "text": "The shift got cancelled by the pharmacy, sorry",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-138",
+      "text": "That's frustrating but I understand",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-139",
+      "text": "There's a cancellation fee on their side, not yours",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-140",
+      "text": "Good to know",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-141",
+      "text": "Can I bring my own scanner",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-142",
+      "text": "We have one, no need",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-143",
+      "text": "Which medical aids do you deal with most",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-144",
+      "text": "Discovery and Bonitas mostly",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-145",
+      "text": "Same as my usual, easy",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-146",
+      "text": "The robot is down so it's all manual today",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-147",
+      "text": "No problem, I've worked manual before",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-148",
+      "text": "Wear closed shoes, health and safety",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-149",
+      "text": "Noted",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-150",
+      "text": "Is the shift still open for the 9th",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-151",
+      "text": "Yes, just posted it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-152",
+      "text": "Applied",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-153",
+      "text": "Confirmed, thanks",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-154",
+      "text": "Do you know where the nearest Gautrain station is",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-155",
+      "text": "Sandton, about 10 minutes walk",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-156",
+      "text": "Great, I'll take the train",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-157",
+      "text": "There's a taxi rank right outside too",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-158",
+      "text": "Please don't park in the doctor's bay",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-159",
+      "text": "Sorry, I'll move it",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-160",
+      "text": "Someone will call about the roster next month",
+      "label": "negative",
+      "reviewed": false,
+      "note": "§14 named false positive, restated"
+    },
+    {
+      "id": "neg-161",
+      "text": "The regional manager wants to call a meeting",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-162",
+      "text": "They'll call the branch directly about stock",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-163",
+      "text": "I tried to call the pharmacy but no answer",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-164",
+      "text": "Give the pharmacy a call in the morning",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-165",
+      "text": "Please contact the pharmacy manager about that",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-166",
+      "text": "You can message the pharmacy through the app",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-167",
+      "text": "Message me here if anything changes",
+      "label": "negative",
+      "reviewed": false,
+      "note": "'message me' but explicitly in-platform"
+    },
+    {
+      "id": "neg-168",
+      "text": "Call me through the app if you get lost",
+      "label": "negative",
+      "reviewed": false,
+      "note": "explicit in-platform carve-out"
+    },
+    {
+      "id": "neg-169",
+      "text": "WhatsApp me on the app number, not my personal one",
+      "label": "negative",
+      "reviewed": false,
+      "note": "mentions WhatsApp but stays on-platform"
+    },
+    {
+      "id": "neg-170",
+      "text": "Contact me via the platform please",
+      "label": "negative",
+      "reviewed": false
+    },
+    {
+      "id": "neg-171",
+      "text": "Rather message me on here than email",
+      "label": "negative",
+      "reviewed": false
+    }
+  ]
+}

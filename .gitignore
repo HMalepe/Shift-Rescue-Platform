@@ -1,0 +1,51 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# build output
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+.turbo/
+
+# test / coverage
+coverage/
+.vitest/
+
+# env — never commit real credentials (POPIA §10, security review §12.1)
+.env
+.env.*
+!.env.example
+
+# local database volumes
+.postgres-data/
+.redis-data/
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+!*.tfvars.example
+*.tfvars
+
+# load-test output
+tools/loadtest/results/
+
+# editor / OS
+.DS_Store
+*.pem
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Next.js build output
+.next/
+next-env.d.ts

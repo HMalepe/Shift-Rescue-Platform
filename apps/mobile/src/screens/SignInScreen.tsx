@@ -1,0 +1,116 @@
+import { useState } from "react";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { signIn } from "@/lib/api";
+import { theme } from "@/theme";
+
+/**
+ * Sign in.
+ *
+ * No TOTP field, unlike the web client. §12.1 requires MFA on admin accounts,
+ * and this app is for locums — an admin has no reason to be here, and offering
+ * the field would imply otherwise. If an admin ever does sign in, the API
+ * returns MFA_REQUIRED and the message says to use the web console, which is
+ * the honest answer rather than a half-built second factor on a phone.
+ */
+export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    const result = await signIn({ email: email.trim(), password });
+    setBusy(false);
+    if (result.ok) onSignedIn();
+    else setError(result.message);
+  }
+
+  return (
+    <View style={{ flex: 1, justifyContent: "center", padding: 24, gap: theme.gap }}>
+      <Text style={{ fontSize: 26, fontWeight: "700", color: theme.text }}>
+        Locum Planner
+      </Text>
+      <Text style={{ color: theme.textDim, marginBottom: 8 }}>
+        Relief pharmacist shifts across Gauteng.
+      </Text>
+
+      {error ? (
+        <Text style={{ color: theme.danger }} accessibilityRole="alert">
+          {error}
+        </Text>
+      ) : null}
+
+      <Field
+        label="Email"
+        value={email}
+        onChange={setEmail}
+        autoComplete="username"
+        keyboardType="email-address"
+      />
+      <Field
+        label="Password"
+        value={password}
+        onChange={setPassword}
+        autoComplete="current-password"
+        secure
+      />
+
+      {busy ? (
+        <ActivityIndicator color={theme.accent} />
+      ) : (
+        <Pressable
+          onPress={() => void submit()}
+          style={{
+            backgroundColor: theme.accent,
+            borderRadius: 8,
+            paddingVertical: 14,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: theme.accentText, fontWeight: "600" }}>Sign in</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  secure,
+  autoComplete,
+  keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  secure?: boolean;
+  autoComplete?: "username" | "current-password";
+  keyboardType?: "email-address";
+}) {
+  return (
+    <View style={{ gap: 4 }}>
+      <Text style={{ fontSize: 13, fontWeight: "500", color: theme.text }}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        secureTextEntry={secure ?? false}
+        autoCapitalize="none"
+        autoCorrect={false}
+        {...(autoComplete ? { autoComplete } : {})}
+        {...(keyboardType ? { keyboardType } : {})}
+        style={{
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 8,
+          padding: 12,
+          backgroundColor: theme.surface,
+          color: theme.text,
+        }}
+      />
+    </View>
+  );
+}

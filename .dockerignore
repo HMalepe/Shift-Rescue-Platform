@@ -1,0 +1,42 @@
+# Keeping these out is not only about image size.
+#
+# `.env` and `infra/*.tfvars` hold real credentials, and a COPY that sweeps
+# them in bakes them into a layer that survives every later deletion. An image
+# is distributed; a layer is not private because the file was removed in the
+# next step.
+.env
+.env.*
+!.env.example
+infra
+*.tfvars
+*.tfstate*
+
+node_modules
+**/node_modules
+.git
+.github
+**/.turbo
+**/dist
+**/.next
+**/coverage
+**/test
+
+docs
+*.md
+!README.md
+
+# Workspace members the image does not run.
+#
+# Their manifests are NOT excluded: pnpm resolves workspace links at install
+# time and fails on a missing member, so `pnpm install --frozen-lockfile`
+# needs every package.json even for packages whose source never ships.
+# Excluding the directory outright is what breaks the build — the first
+# version of this file did exactly that.
+apps/web/*
+!apps/web/package.json
+apps/mobile/*
+!apps/mobile/package.json
+tools/loadtest/*
+!tools/loadtest/package.json
+tools/devdata/*
+!tools/devdata/package.json

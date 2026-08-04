@@ -1,0 +1,31 @@
+{
+  "name": "@locum/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./seed": "./src/seed/index.ts"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate && tsx scripts/postprocess-migration.ts",
+    "postprocess": "tsx scripts/postprocess-migration.ts",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx src/seed/run.ts",
+    "gates": "tsx scripts/record-gates.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src test --max-warnings=0"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.30.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

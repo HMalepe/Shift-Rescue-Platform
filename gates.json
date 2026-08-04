@@ -1,0 +1,273 @@
+{
+  "$comment": [
+    "§12.5 — the gate ledger, as data in the repository.",
+    "",
+    "This file exists because the ledger previously lived only in the dev",
+    "database, and dropping that database to test a migration erased every",
+    "row in it. §12.5's own words: 'gate status recorded only in a document",
+    "drifts from reality within days'. A ledger that lives only in a mutable",
+    "database drifts faster, and silently — nothing tells you it is gone.",
+    "",
+    "Here it is reviewable in git, reconstructible with `make gates`, and it",
+    "moves in the same commit as the code whose gate it describes. The",
+    "verification_runs table remains the queryable form; this is its source.",
+    "",
+    "status:",
+    "  passed    — the gate is closed. Requires evidenceUrl; the migration",
+    "              enforces that with a CHECK constraint, not a convention.",
+    "  executed  — the check ran green, but §15 classes the gate as G -> X or",
+    "              E, so it cannot close without a live environment or a third",
+    "              party. Recording these as 'passed' is exactly the lie the",
+    "              gate taxonomy exists to prevent.",
+    "",
+    "clock: A = generation, B = execution, C = external (§15)."
+  ],
+  "gates": [
+    {
+      "gateId": "schema.geography_roundtrip",
+      "clock": "B",
+      "status": "executed",
+      "notes": "packages/db/test/geography.test.ts — the hand-written EWKB parser round-trips against real PostGIS ST_X/ST_Y. lng/lat ordering is asserted explicitly: transposed, Johannesburg lands in Somalia."
+    },
+    {
+      "gateId": "code.concurrency",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.2 — N locums race one shift against real Postgres row locks; the partial unique index bookings_one_confirmed_per_shift is the backstop. Mutation-checked: dropping FOR UPDATE produces unique violations."
+    },
+    {
+      "gateId": "code.idempotency",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.5 — replayed keys return the cached response; a replayed key with a different body is rejected rather than silently answered."
+    },
+    {
+      "gateId": "security.auth",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — Argon2id, refresh rotation, reuse detection, session watermark invalidation."
+    },
+    {
+      "gateId": "security.auth_rate_limit",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — per-IP login limiting, tighter than the global limit."
+    },
+    {
+      "gateId": "security.authorization",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Closes the hole where confirmBooking never checked pharmacy membership. Enforced in packages/core rather than middleware, so the worker is covered too."
+    },
+    {
+      "gateId": "security.webhook_signature",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.5 — X-Twilio-Signature validated over the full signed URL; unsigned requests rejected."
+    },
+    {
+      "gateId": "security.file_upload",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — the malicious-upload fixture set. Stub scanner only detects EICAR; assertProductionReady refuses to boot production with it."
+    },
+    {
+      "gateId": "product.attendance",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§8 — check-in/check-out windows. Anti-spoofing needs physical Android hardware (§16) and is not covered here."
+    },
+    {
+      "gateId": "product.verification",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§5 — document review queue and the verified-vs-complete distinction."
+    },
+    {
+      "gateId": "product.profile",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Self-service profile editing for both sides."
+    },
+    {
+      "gateId": "product.cancellation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§9 — the R10 accountability fee rides the month's subscription rather than triggering its own transaction."
+    },
+    {
+      "gateId": "messaging.session_window",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.3 — business-initiated is always a template, with no exception for a recently-open session window."
+    },
+    {
+      "gateId": "messaging.consent",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.4 — opt-out always wins, compared by timestamp so re-opt-in is handled."
+    },
+    {
+      "gateId": "messaging.quiet_hours",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§4.4 — deferred to 07:00 SAST, never dropped. booking_cancelled deliberately ignores quiet hours."
+    },
+    {
+      "gateId": "messaging.spend_cap",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.6 — the cap alerts and does not block; a cap that suppressed booking confirmations would turn a billing anomaly into an outage."
+    },
+    {
+      "gateId": "messaging.delivery_log",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.7 — a 'sent' event with no delivery confirmation is not evidence anything reached anyone."
+    },
+    {
+      "gateId": "billing.dunning",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§2/§0.2 — decline, retry, outage and timeout-after-settlement against the fake provider. Money moves exactly once; an outage does not burn a retry attempt. §15 requires a Payfast sandbox driven into error states to close it."
+    },
+    {
+      "gateId": "messaging.quiet_hours_drain",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§4.4 — packages/core/test/gates/drain.test.ts against real Postgres: exactly-once claim under two concurrent workers, batch size honoured, opt-out re-checked at send time, failed sends terminal, stalled claims surfaced rather than reclaimed. Mutation-checked — removing `skip locked` fails the contention test with a named assertion. Executed, not passed: the fake sender proves the claim protocol, not the Twilio integration."
+    },
+    {
+      "gateId": "worker.scheduled_jobs",
+      "clock": "B",
+      "status": "executed",
+      "notes": "apps/worker/test/scheduler.test.ts against real Redis and real Postgres: a dispatched job moves a real row, an unhandled job name fails loudly, stale schedules are reconciled away on boot, re-registering does not double the cadence."
+    },
+    {
+      "gateId": "messaging.disintermediation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§6/§14 — 17 tests in packages/core/test/gates/disintermediation.test.ts. Mechanism is asserted hard: every rule fires, the false positives §14 names by hand do not, a flagged message is still delivered verbatim, the flag is invisible to participants, and the time gate refuses non-participants and threads closed 72h after the shift. Accuracy is reported and deliberately NOT asserted — §15: 'the number does not exist until measured', and the corpus labels were written by the same process that wrote the regexes. Provisional over 220 messages: 47 TP / 0 FP / 171 TN / 2 FN. The gate cannot close until reviewed:true appears in the corpus (§16 human labelling, Phase 1)."
+    },
+    {
+      "gateId": "product.web_client",
+      "clock": "B",
+      "status": "executed",
+      "notes": "apps/web driven end-to-end in a real Chromium against the running API and a seeded Postgres: manager signs in, posts a radius shift, a locum 30km away sees it and applies, the manager confirms, both message through the platform. Verified in the browser that localStorage, sessionStorage and document.cookie are all empty — the BFF keeps every token server-side. Two real defects found by doing this, both fixed and regression-tested: a raw Postgres constraint name reaching the user on duplicate apply, and confirmBooking never checking §5 verification."
+    },
+    {
+      "gateId": "product.reputation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§7 — 18 tests. §7 is one line in the spec, so the interpretation is written into tiers.ts rather than assumed. Four anonymisation controls, each asserted by behaviour: a distinct-rater floor, a dominance guard (a pharmacy booking the same locum weekly is one opinion), delta protection (an aggregate that refreshes on a single new rating lets the subject solve for it), and a density rule that withholds outright where the local market is too thin for any k to hide a rater. Two errors found and corrected while building: the density formula scaled the floor the opposite way to its own comment, and unratedBookingsFor prompted only the locum — collecting one-directional ratings under the word 'unified'. Both mutation-checked."
+    },
+    {
+      "gateId": "ops.alerting",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§0.1 Phase 0 exit criterion — 25 tests (17 in packages/observability, 8 in apps/api). Fired for real against the running API with an external HTTP receiver: POST /__drill/boom returned 500 and delivered a severity=page alert. Negatives confirmed live in the same run — cooldown 429, bad secret 401, unauthenticated tRPC 401, and ZERO alerts delivered for those three. Two defects found while building: DrillGate refused its own first firing (lastFiredAt=0 read as 'fired at the epoch', invisible under a real clock), and classify() paged on every tRPC UNAUTHORIZED because tRPC's own errors are not DomainErrors. Cannot move past 'executed': §15 says the gate is that a phone buzzes, which needs staging, a real webhook and someone on call."
+    },
+    {
+      "gateId": "ops.dashboard",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.2 — the four panels the spec names, counted from rows rather than application counters. 8 tests against the seeded database plus a live render as a real MFA admin: confirmation 16.0% (183/1143), WhatsApp delivery 69.8% (88/126), settlement 62.5% (125/200), proximity query 17.5ms over 269 open shifts and 5001 located locums. Also docs/ONCALL.md — who gets paged, for what, and by when. The page exists mainly to carry the three failures that raise no exception and so can never reach the §0.1 pager: a shift that started unfilled, a deferred message past due, and a charge with no answer from the provider."
+    },
+    {
+      "gateId": "privacy.popia",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§10 — right of access and right to erasure, neither of which existed. popiaConsentAt was a column and nothing more, in a product holding SAPC certificates, ID documents, a GPS trace per shift and message history. 14 tests. The structural guarantee: RETENTION_POLICY is asserted against every pgTable in the schema, so a new table cannot be added without a retention decision, and every table marked delete/anonymise must also appear in the export. That consistency check found a real gap while being written — auth_attempts and favourite_locums were being erased but never disclosed. Erasure deliberately RETAINS no-show and completed-shift counts: clearing them would make the erasure endpoint a §7 reputation reset (three no-shows, delete, re-register, clean record). Anonymisation not deletion, and the UI says so rather than promising a deletion the product does not perform. Legal sufficiency is E-blocked — §15 lists 5 legal opinions."
+    },
+    {
+      "gateId": "security.rate_limit",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — per-ACCOUNT quotas on browse, booking creation and data export. The existing limit was per-IP, which is right for credential stuffing and wrong for the two threats §12.1 actually names: an authenticated scraper gets a new IP by switching to mobile data, while a pharmacy group behind one NAT shares a bucket. 3 tests, and one of them is a regression: the first version of the middleware returned its own protectedProcedure and silently dropped the locum-only check from applyToShift — a manager could have applied to shifts, with nothing failing visibly. Caught by the compiler noticing locumProcedure had become unused. Postgres-backed rather than Redis so browse does not gain a second way to be down; swept hourly by the worker."
+    },
+    {
+      "gateId": "product.anti_spoofing",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§8/§16 — apps/mobile, the reason Expo was chosen on day one. 9 tests over the pure signal logic in src/lib/attendance.ts. THIS GATE CANNOT CLOSE HERE and §16 says so directly: 'At least one physical Android device with a mock-location app installed and active. Emulator confirmation is explicitly insufficient — the signals being captured are precisely the ones an emulator misrepresents.' What is proven is the half hardware does not decide: Android's mocked flag is forwarded, iOS sends NOTHING rather than a reassuring false (the API distinguishes absent from false, and 'unknowable' recorded as 'clean' would make an iPhone record look better-evidenced than an honest Android one), no distance is computed on the device, and anomalies annotate without ever refusing a check-in. location.ts is deliberately thin so the untestable surface is as small as possible."
+    },
+    {
+      "gateId": "messaging.twilio_adapter",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§11.1 — the real WhatsAppSender. 11 tests against a real HTTP server standing in for Twilio: exact request shape, Basic auth, ContentVariables in Meta's one-based positional form, StatusCallback present, error classification (429/5xx/408 transient, 63016 permanent), timeout, and refusal to send a template with no approved Content SID rather than falling back to free-form. Found that FakeWhatsAppSender had been LYING: it returns priceCents on every send, and Twilio returns price:null on accept and bills later on the status callback — any code assuming a send-time price would pass every test and report zero §11.6 spend in production. Also: Twilio reports price as a negative decimal, which stored verbatim makes daily spend a growing negative number and the cap never fires. Cannot close — §15 lists the sender and template approval as externally blocked, so no message here has ever reached a phone."
+    },
+    {
+      "gateId": "billing.payfast_adapter",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§2/§0.2 — the real PaymentProvider, and the last vendor adapter. 15 tests against a real HTTP server standing in for Payfast. The load-bearing assertion is a single field: m_payment_id carries OUR idempotency key, and lookup() searches by it. dunning.ts persists that key in provider_ref BEFORE the charge and never overwrites it, precisely so a charge whose response was lost can be reconciled rather than repeated — which only works if the key actually reached Payfast. Send a key Payfast never saw and everything still looks fine (charges succeed, tests pass) right up until one response is lost, at which point lookup finds nothing, the unknown outcome can never resolve, and the next attempt bills a pharmacy that has already paid. Three outcomes are kept distinct and asserted separately: succeeded, declined (with permanent carried explicitly, not inferred, so a cancelled card stops the ladder early while insufficient funds keeps trying), and unknown — a timeout or 5xx is NEVER reported as declined, because declined is retryable and retrying is how a pharmacy gets billed twice. A failed lookup returns undefined rather than throwing, so a Payfast outage is not mistaken for evidence the charge did not happen; PENDING is likewise not an answer. Signature: MD5 over an ORDERED entry list (entries not an object, so a reorder cannot silently change the hash) with PHP urlencode semantics. Writing this produced a self-caught error worth recording: the first version of the header claimed encodeURIComponent emits lowercase hex. Verified with node — it emits uppercase. There are exactly two real differences (space becomes +, and !'()* are escaped), and the test now asserts the non-difference explicitly because the false claim is widely repeated. Neither the passphrase nor the merchant key ever reaches the wire. Cannot close — §15 lists the Payfast sandbox as externally blocked, so no money has moved."
+    },
+    {
+      "gateId": "storage.s3_adapter",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§5/§10/§12.1 — the real DocumentStorage. InMemoryDocumentStorage was the only implementation, and its own header says never to wire it into production; what it holds are SAPC certificates, SA ID documents and payslips, uploaded by people trying to get work. 21 tests, four of them mutation-checked (RFC-3986 escaping, single-encoding of key segments, the four-HMAC signing chain, and the presign TTL clamp all fail the suite when removed). SigV4 is implemented by hand rather than via @aws-sdk/client-s3: three operations are needed, and the SDK brings its own credential-resolution chain that reads ambient environment and instance metadata. SigV4 fails closed and loudly, so the tests concentrate on the failures that are CONDITIONAL instead — a key encoding that works for cert.pdf and 403s on 'certificate (1).pdf' (the name a browser gives a second download), and S3's documented exception to SigV4 normalisation (segments encoded once, / preserved) which if missed breaks every namespaced key, i.e. every key this app writes. kmsKeyId is required by the type AND checked in the constructor, because config arrives from environment variables where unset is the empty string — that is the path by which a bucket of identity documents ends up unencrypted while everyone believes otherwise. SSE-KMS is named per-object rather than relying on bucket default encryption, which lives in Terraform where a later edit removes it with no code change. Presigned GETs are clamped to the same 5 minutes as core's own signed URLs rather than trusting the caller. Bodies are hashed rather than sent UNSIGNED-PAYLOAD, making that the only end-to-end integrity check on upload — a corrupted SAPC certificate is indistinguishable from a forged one to whoever reviews it later. Errors are parsed from S3's XML, so an access-denied reads as AccessDenied rather than 'Unexpected token < in JSON'. This also split assertProductionReady's single usingStubDocumentDeps flag in two: with real S3 available, wiring storage would have satisfied one flag and reported the whole document pipeline production-ready while nothing scanned a single upload. §12.1 requires scanning BEFORE storage, and the scanner is still the EICAR stub, so production still refuses to boot — it now names which half is missing. Cannot close: §15 lists AWS as externally blocked, so no byte here has reached S3, and no hard-coded AWS reference signature vector is asserted (reproducing one from memory would test my recollection against code written from the same recollection — it should be added the day someone can paste a real one from the docs)."
+    },
+    {
+      "gateId": "ci.test_isolation",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Two independent flakes in the gate suite itself, both diagnosed by reproduction rather than inspection. (1) Every package shared one database while turbo ran them in parallel, and claimDueMessages claims whatever is due BY DESIGN — in production there is one queue and a worker should drain all of it. apps/worker/test/scheduler.test.ts runs the real drain with now pushed 24h ahead so its own row is due, which makes every other package's rows due too, at batch size 50. Both directions reproduced: core's 'claims no more than the batch size' returned fewer than 3, and the worker's seam test expected sender.sent to have length 1 and got []. Roughly one run in three — often enough to be real, rare enough to look like something else. Fixed by giving each package its own database, cloned from a seeded template with CREATE DATABASE ... TEMPLATE so the §14 seed is not rebuilt four times per run. (2) A separate flake, ~1 run in 6, reproduced with the worker suite running ALONE so it was not caused by (1): job.waitUntilFinished listens through QueueEvents, whose Redis subscription is established asynchronously, so a job that finished before the subscription was live published its event to nobody and the promise never settled — a 30s vitest timeout reporting 'Test timed out', which names the symptom and nothing else. Fixed by awaiting queueEvents.waitUntilReady() first, and by replacing a flat 250ms sleep (a guess about how fast the box is) with a bounded poll that fails with a stated reason. Verified: worker suite 12/12 clean where it previously failed ~1 in 6; the concurrent repro 10/10 clean where it previously failed ~1 in 3; three consecutive full `make verify` runs green. This gate exists because §12.5 records gates as executed, and a gate that passes two runs out of three is not evidence of anything — the ledger's value depends entirely on the suite being deterministic."
+    },
+    {
+      "gateId": "infra.terraform",
+      "clock": "B",
+      "status": "executed",
+      "notes": "infra/ — VPC, RDS Postgres 16.13, ElastiCache Redis 7.1, the documents bucket and its KMS key, ECS Fargate for API and worker, and the §0.1 infrastructure alarms. IMPORTANT CORRECTION TO AN EARLIER CLAIM: I had reported repeatedly that this could not even be validated here because terraform was not installed. That was wrong and I never checked — releases.hashicorp.com is reachable through the proxy, so terraform installs fine. registry.terraform.io IS blocked (403 at the gateway), but provider binaries are also on releases.hashicorp.com, so a filesystem_mirror makes init work offline. What that buys: `terraform validate` against the real hashicorp/aws 5.100 schema, which checks every resource type, attribute name and type. Also `terraform fmt -check -recursive`. What it does NOT buy, and the README says so plainly: no plan has ever run (needs credentials, §15 lists AWS as externally blocked) and nothing has been applied, so quota limits, instance-class availability in af-south-1, functionally-wrong-but-valid IAM, and every ordering problem remain unproven. One real bug was found by evaluation rather than by validate, which is the kind validate structurally cannot catch: the Budgets tag filter is literally user:<Key>$<Value>, and written inline as \"...$${var.environment}\" HCL reads $${ as an escape and emits a literal ${var.environment}; adding a third $ gives $${var.environment}. Both forms are accepted by Terraform and both produce a budget filtering on a tag value no resource carries — zero spend forever, never alerts. Verified all three forms with terraform apply on a probe and switched to format(). Design decisions encoded with reasons: af-south-1 is VALIDATED not defaulted (POPIA §72 transfer conditions are a §13 Day-0 legal item, so the region fails rather than warns); one NAT gateway with the accepted failure named (AZ outage stops outbound Twilio/Payfast, mitigated because both are retrying queues); exactly one worker, not autoscaled, because SKIP LOCKED makes more workers safe for correctness but batch size is what paces the 07:00 burst against Twilio's limits and §11.6's cap is per day not per worker; separate ECS execution and task roles so internet-facing application code cannot read every secret; the task role has no s3:PutBucketPolicy or PutBucketPublicAccessBlock, so a compromised API cannot make the documents bucket public as a first step; bucket default SSE-KMS duplicating the adapter's per-object header, deliberately, because this file is where an edit silently removes it; deny policies for unencrypted writes and insecure transport; versioning to protect a §5 review in progress; and CloudWatch alarms scoped to what the application cannot report on itself, because a service that alerts on its own health goes quiet exactly when things are worst. Cannot close — §15."
+    },
+    {
+      "gateId": "security.malware_scanning",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.1 — the real malware scanner, and the last stub that made assertProductionReady refuse to boot. ClamavDocumentScanner speaks clamd's INSTREAM protocol directly over a socket. 12 tests, and both halves ran: 5 against a REAL clamd (installed here; database.clamav.net is blocked by the network policy so signatures could not be downloaded, and a minimal .ndb containing an EICAR signature was built instead — the signature set is operational data, the adapter's job is the protocol) and 7 against a scripted socket server for the failures a real daemon will not perform on demand. The design point: ScanVerdict is {clean:true} | {clean:false,detail} with NO third value, so every failure THROWS. A scanner returning clean when unreachable turns an outage into a silent policy change — uploads keep working, the admin queue keeps showing documents as scanned, and a day of files goes in unexamined with nothing recording it. uploadDocument awaits the scan before storage.put, so a throw means nothing reaches the bucket. Three fail-closed mutations were checked and all three are caught: timeout returning clean, unrecognised response falling through to clean, and close-without-verdict (what clamd does past StreamMaxLength) treated as clean. INSTREAM rather than SCAN because the file-path commands need clamd to read the same filesystem, which on Fargate means a shared volume holding ID documents in one more place they can be left behind. Deployed as an ECS sidecar in the same task: awsvpc gives containers one network namespace, so the API reaches it on 127.0.0.1 and the documents never touch the VPC network — which is also why no security group opens 3310. Task sized 1 vCPU / 2 GiB because clamd holds the signature database in memory and an under-provisioned task is OOM-killed while loading it. Cannot fully close: the live half runs against a hand-built one-signature database here, not the real ClamAV corpus, so this proves the protocol and the fail-closed behaviour rather than detection breadth."
+    },
+    {
+      "gateId": "ci.workflow_integrity",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Two ways CI could have reported green while proving nothing, both found and both fixed. (1) A REGRESSION I INTRODUCED: the per-package test databases commit (b0d99f2) hard-coded `psql -U postgres` in scripts/test-dbs.sh, but the postgis service container initialises `locum` AS superuser and has no postgres role at all — CI would have failed outright, and I did not check because CI cannot run from here. Admin connection, owner and password are now variables; the CI path was exercised locally by connecting as a non-postgres superuser. The workflow also seeded a database no test uses any more, and now asserts each locum_test_<pkg> database actually exists, because if test-dbs.sh silently did nothing every gate would run against whatever DATABASE_URL pointed at and pass. (2) The live malware tests are describe.skipIf(!haveClamd), so without a clamd service they vanish and the run still reports green — a skipped gate is indistinguishable from a passing one unless someone reads counts. Added a clamav service container plus a step that fails the job if any test skipped. That guard was itself wrong first time: it checked for status 'pending' and vitest reports 'skipped', so it returned zero skips whether or not the daemon was up — the exact silent pass it exists to prevent. Verified against both a reachable and an unreachable daemon (0 skipped vs 5) before being trusted."
+    },
+    {
+      "gateId": "security.error_disclosure",
+      "clock": "B",
+      "status": "executed",
+      "notes": "Found by ACTUALLY BOOTING the API in production mode — something never done before, because until the ClamAV adapter landed assertProductionReady refused to start and there was nothing to boot. It started, which is itself the news: the production gate now passes with real adapters wired. Then, with the scanner deliberately killed, an upload returned to the client: 'clamd connection failed: connect ECONNREFUSED 127.0.0.1:3310'. tRPC suppresses stack traces outside development but returns the thrown error's MESSAGE verbatim, at every level including production, and the errorFormatter passed non-domain errors through untouched. Not scanner-specific: an S3Error carries the bucket and key, a PostgresError can carry a fragment of the failing query, and any authenticated locum could see it by uploading during an outage. Invisible to the existing suite because every test asserts on status codes and on domain messages, both of which were correct throughout. Fixed by masking the message for INTERNAL_SERVER_ERROR while leaving DomainError messages alone — those are the product's own wording and a blanket mask would turn 'You have already applied for this shift' into 'Something went wrong'. The first version of the fix masked the message and LEFT THE STACK, which contains the message; the regression test caught it, and the stack is now stripped unconditionally rather than depending on NODE_ENV being right — a staging box accidentally running as 'test' should not be more talkative than production. 2 tests, both mutation-checked (removing the mask fails; masking the message but keeping the stack fails). Also verified end-to-end through real HTTP against a real clamd: EICAR embedded in a PDF is rejected with the user-facing wording and recorded as scan='infected' with the signature name and an empty storage_key (no bytes stored) plus a document.rejected_infected audit row; a clean PDF is accepted as scan='clean'; and with clamd dead the upload fails and the documents table count does not change — fail-closed, proven above the adapter for the first time."
+    },
+    {
+      "gateId": "matching.ring_expansion",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.3 Phase 3 — the proactive-matching fan-out, the last unbuilt feature in the spec. 16 tests, four mutation-checked. The design decision: rings are an ESCALATION, not a broadcast. The obvious reading of the spec's 'notification burst' is to message everyone eligible at once, and this deliberately does not, for three reasons that point the same way — every message costs money and cannot be recalled (a §11.6 daily cap hit at 08:00 by one fan-out has silenced every booking confirmation for the rest of the day); a shift needs ONE pharmacist, so messaging two hundred people means a hundred and ninety-nine were interrupted for nothing and the ones who respond and lose learn not to; and §10.1 makes favourites the manager's default audience, so simultaneous ring 2 makes being someone's regular worth nothing. Ring 0 is favourites immediately, later rings release only if the shift is still open after 12 minutes, and selectRing re-checks status itself because a timer firing after the shift was filled is the NORMAL case. The constraint that matters most is two-sided distance: the ring is the pharmacy searching outward, but max_travel_km is the locum's own limit and it wins — a locum who said 15km is never messaged about a 40km shift however wide the ring has grown, and getting that backwards builds a system most annoying to the people who were most explicit about their limits. Second: never offer to someone already confirmed on an overlapping shift, because they would have to cancel one and §9 charges for a late cancellation — the platform would be manufacturing the no-show it then penalises. Ordering is reliability BEFORE distance: the manager's problem is who will turn up, not who is nearest, since a no-show means a pharmacy that legally cannot trade. Caps at 25/ring and 60/shift bound the spend. Opt-out is filtered at SELECTION not at send, because a ring of 25 that silently suppresses 20 has become a ring of five with nobody told. PERFORMANCE, measured not assumed: the first version used ST_Distance(a,b) <= r, which is a filter — EXPLAIN ANALYZE showed an index scan on verification with distance as a filter and the base_location GiST index never touched (cost 28386, 18.3ms, 259 rows). Rewritten with ST_DWithin and a constant radius it uses the GiST index (cost 20, 11.6ms, same 259 rows). The wall-clock gain at 5000 locums is unremarkable and that is the honest point: what changed is the shape, from O(n) over every verified profile to radius-bounded — exactly the §12.3 trap of a thing that behaves fine in a demo. Also added the shift_offer template, categorised UTILITY (transactional work offer to a registered pharmacist, not promotional) because §11.2 warns a recategorised resubmission restarts Meta's review clock. Cannot close: the §12.3 gate requires the fan-out and booking contention load-tested TOGETHER, which is the next piece of work."
+    },
+    {
+      "gateId": "loadtest.combined_fanout_contention",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§12.3's actual gate, EXECUTED: 'exercise the booking-confirmation row-locking under concurrent accept attempts, AND the notification fan-out path under a burst, together — not as separate unit tests.' Until now the harness could only approximate the second half: it ran the proximity READ the fan-out would use, because the fan-out did not exist. Now three k6 scenarios run simultaneously against one API and one Postgres. Measured run: 50 concurrent confirms across 20 contended shifts (19 won, 31 lost cleanly, 0 server errors, p95 217ms), 601 proximity reads (100% ok, p95 14ms), and 120 'Looking for a Locum' toggles producing 600 real offers with 18 correctly rejected by the per-account quota (p95 169ms, 0 server errors). Post-run invariants all clean: 19 shifts with exactly one confirmed booking, 0 double-booked, 0 status inconsistencies, 600 offers written across 12 shifts, 0 beyond a locum's own max_travel_km, 0 duplicates, 0 over the per-shift budget. THREE REAL DEFECTS FOUND BY RUNNING IT, none visible in any HTTP response. (1) The fixtures gave locums no phone and no WhatsApp opt-in, so the fan-out correctly selected nobody and the run reported fanout_offers_made:0 with every threshold green — the code was right and the harness was measuring nothing. (2) k6 drives every request from one address, so §12.1's per-IP limiter (100/min) tripped within seconds and failed 93% of browse calls; the run was measuring the rate limiter, not the system. The Makefile now documents that the target API must be started with RATE_LIMIT_MAX raised, and deliberately does NOT relax the per-ACCOUNT quotas, since those are per-token and the fan-out quota firing under a sustained burst is correct behaviour worth observing. (3) The deepest one: the contention scenario confirms every contended shift within the first second, and selectRing correctly refuses to notify anyone about a shift that is no longer open — so pointing the burst at those shifts produced zero offers and a green run. Fixed by reserving a separate set of fan-out shifts with their own managers, which is the only way both paths can genuinely run AT THE SAME TIME. The verifier was itself checked by injection: an offer recorded at 90km against a 30km limit makes it print the violation and exit 1; clean, it exits 0. Also added shift_offers with a unique index as the durable dedupe (a duplicate is an unrecallable second WhatsApp), and the §10 retention consistency test immediately failed the build for a table with no retention decision — working exactly as designed — so the table is now recorded as delete, erased, and disclosed in the §10 export. Cannot close: §15 requires execution gates to close against a live staging environment with an evidence URL, and this ran locally."
+    },
+    {
+      "gateId": "storage.provider_agnostic_encryption",
+      "clock": "B",
+      "status": "executed",
+      "notes": "User pivoted the MVP deploy target from AWS/Terraform to Railway (no AWS account, no domain purchase, faster path to live). Railway has no managed S3-compatible store with a customer KMS key concept; Cloudflare R2 was chosen as the object store, and R2 encrypts every object at rest under a key IT manages, with no bucket-side slot for a customer key — sending the AWS SSE-KMS header to it is not 'extra safety', it is simply outside R2's contract. S3DocumentStorage's previously-unconditional kmsKeyId requirement was generalised into a discriminated SseConfig: {mode:'aws-kms', kmsKeyId} unchanged for AWS, {mode:'provider-managed'} for R2/B2 sending no encryption header at all. No default and no inference — S3_SSE_MODE must be set explicitly in apps/api/src/config.ts, or documentStorage stays undefined and falls back to the in-memory stub, which assertProductionReady still refuses in production. 25 tests (up from 21), including a new end-to-end R2-shaped addressing test (path-style, region 'auto', no encryption header) and 2 mutation checks: always sending the SSE-KMS header regardless of mode, and a constructor guard that ignores provider-managed and demands a KMS key unconditionally — both caught. A REAL REGRESSION was caught while checking infra/ for stale references rather than assuming the Terraform was untouched: infra/compute.tf set S3_KMS_KEY_ID but never S3_SSE_MODE, so applying the AWS path as originally written would have deployed production silently running the in-memory stub — the exact failure this design exists to prevent. Fixed by adding S3_SSE_MODE=aws-kms to the ECS task's common_environment. infra/ revalidated clean after the fix; the AWS path is deferred, not deleted. New: railway.json (API service, Dockerfile build, /health check), railway.worker.json (same image, worker start command via RAILWAY_CONFIG_FILE), docs/RAILWAY.md (full service-by-service deployment guide: postgis/postgis:16-3.4 image for Postgres since Railway's own template is vanilla and has no PostGIS, Railway's Redis template, clamav/clamav:1.4 as a private-network-only service, api and worker as GitHub-repo services). Explicitly documented as NOT done: apps/web has no Railway build path yet (root Dockerfile only builds api/worker; Next.js in a pnpm workspace needs its own multi-stage build or Nixpacks root-directory config, neither built)."
+    },
+    {
+      "gateId": "billing.subscribe",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§2 — the Payfast tokenization ('Subscribe') flow, closing the gap that the dashboard had no way to start billing at all. packages/core/src/billing/subscribe.ts: buildSubscribeRedirect signs the initial redirect (subscription_type=2, tokenize-only — Payfast-managed recurring billing is deliberately not used, since dunning.ts already owns the retry ladder and letting Payfast auto-bill would create a second source of truth for the same schedule); verifyItnSignature checks the ITN's MD5 signature over fields AS POSTED, not re-sorted, per Payfast's own documented scheme; postbackValidate performs the second, MANDATORY layer Payfast's own guide requires — POSTing the received body back to Payfast and requiring the literal reply VALID, since Payfast itself documents signature-alone as insufficient; postbackValidate fails closed on any network error. activateSubscription and beginSubscribe (find-or-create, since no code path in this repo ever inserts a subscriptions row — pharmacy accounts are provisioned outside the app per §13) complete the flow. Wired into apps/api: config gains PAYFAST_MERCHANT_ID/KEY/PASSPHRASE/PROCESS_URL/ITN_HOST and a DASHBOARD_BASE_URL distinct from PUBLIC_BASE_URL (the manager's BROWSER returns to the Vercel dashboard; Payfast's ITN always calls this API server-to-server — conflating the two would redirect a paying manager to a bare JSON endpoint), assertProductionReady now refuses to boot without Payfast credentials, apps/api/src/payfast/itn-webhook.ts registers /webhooks/payfast/itn wrapped in withIdempotency keyed on pf_payment_id (mirroring the existing Twilio status-webhook pattern), and a new billing.subscribe tRPC mutation (manager-only, pharmacy-membership checked) hands the dashboard a signed redirect. apps/web gets a /billing page (Server Action calling the mutation) and a /billing/checkout page that auto-submits a real POST form to Payfast's hosted checkout, since a browser cannot be POST-redirected from a Server Action. 30 new tests across three packages (15 in packages/core/test/gates/subscribe.test.ts, 5 in apps/api/test/payfast-itn-webhook.test.ts including an idempotent-redelivery check, 5 in apps/api/test/billing.test.ts asserting the pharmacy-authorization boundary and the return_url/notify_url split), all passing; full `make verify` re-run clean. TWO REAL BUGS FOUND AND FIXED WHILE BUILDING THIS, both pre-existing and neither caught by any prior test because every dunning test ran against FakePaymentProvider, which accepts any string as a subscriptionRef: (1) dunning.ts's attemptCharge sent subscriptionCharges.subscriptionId — OUR OWN ROW ID — to the payment provider instead of subscriptions.providerRef, the actual Payfast mandate token; a live charge would have targeted a UUID Payfast has never seen. Fixed with a new SUBSCRIPTION_NOT_TOKENIZED guard and a test that asserts the exact value FakePaymentProvider received, not just the outcome. (2) apps/worker/src/main.ts hardcoded `new FakePaymentProvider()` unconditionally and passed usingFakePaymentProvider: true to assertWorkerProductionReady regardless of whether Payfast was actually configured — so a fully-configured production Payfast account would never have been used, and the readiness guard's payment-provider check was permanently unreachable. Fixed by mirroring the existing Twilio 'fully configured or not at all' pattern; added apps/worker/test/config.test.ts (5 tests, zero prior coverage) explicitly naming the branch as previously unreachable in practice. Cannot close: §15 lists the Payfast sandbox as externally blocked — nothing here has been sent a real ITN, and the field list/order this implements is Payfast's documented shape, not one confirmed against a live delivery. The period-rollover job that would call openPeriodCharge for month 2+ does not exist yet in production wiring and is deliberately out of scope for this gate."
+    },
+    {
+      "gateId": "billing.period_rollover",
+      "clock": "B",
+      "status": "executed",
+      "notes": "§2 — closes the gap flagged as deliberately out of scope in billing.subscribe: nothing in production ever called openPeriodCharge past the one time activateSubscription runs it implicitly for period 1, so every subscription would bill exactly once, ever, with current_period_end sailing past `now` forever — no error, no log line, the quietest possible way to stop collecting money. New packages/core/src/billing/dunning.ts: rolloverDuePeriods finds `active` subscriptions whose current_period_end has passed, and for each calls openPeriodCharge with a new advancePeriod option that advances current_period_{start,end} in the SAME transaction as the charge insert — a crash between the two is impossible, which is what stops the next sweep tick from finding the subscription still 'due' and opening a second charge for a period that already has one. Deliberately restricted to `active`: a past_due or restricted subscription is mid-ladder on an EARLIER unresolved charge, and openPeriodCharge's advancePeriod branch re-checks status with a row lock (FOR UPDATE, added to the existing select) rather than trusting the outer query's snapshot — losing that race returns null, not a thrown error, since a sweep finding nothing left to do this tick is not a failure. Wired into apps/worker: new billing.rollover-periods scheduled job, same cadence as billing.process-due-charges deliberately (a charge this opens is only actually collected on that job's NEXT firing, so any slower cadence just adds latency between 'period ended' and 'we tried to collect'). A SECOND REAL BUG WAS FOUND while building this, independent of the missing job: processDueCharges' WHERE clause applied `next_retry_at <= now` to BOTH 'pending' and 'retrying' charges, and openPeriodCharge never sets next_retry_at on insert — it stays NULL. In SQL, `NULL <= now` is NULL, which a WHERE clause treats as false, so EVERY freshly-opened 'pending' charge was invisible to the sweep forever. This had been true since dunning shipped and was masked by every single existing test manually setting next_retry_at before calling processDueCharges rather than exercising the real path — none of them called openPeriodCharge and then processDueCharges with nothing else changed. Fixed: a 'pending' charge is now unconditionally due; only 'retrying' respects the scheduled retry time. New regression test calls openPeriodCharge for real, asserts next_retry_at is null in the database, and confirms processDueCharges still finds it. 10 new tests (1 processDueCharges regression + 5 rolloverDuePeriods gate tests in packages/core, 1 seam test dispatching the new job through real BullMQ+Postgres in apps/worker/test/scheduler.test.ts, plus 3 more edge cases: past_due subscriptions untouched, calling twice in a row is a no-op the second time, unbilled cancellation fees fold into the rolled-over charge same as a direct call); full `make verify` re-run clean, all 201 packages/core tests and 12 apps/worker tests passing. Cannot close: §15 lists the Payfast sandbox as externally blocked, so no month-2 charge here has ever actually reached Payfast — this proves the scheduling and period-bookkeeping, not the live collection."
+    }
+  ]
+}

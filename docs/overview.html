@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Locum Planner — Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:        #0D2523;   /* dispensary petrol — near-black with green in it */
+    --ink-soft:   #38534F;
+    --paper:      #EEF2F0;   /* cool clinical paper, not cream */
+    --card:       #FFFFFF;
+    --amber:      #C57A18;   /* amber medicine glass */
+    --amber-lite: #F5E4C8;
+    --mint:       #2F7D6A;   /* SA pharmacy cross green, desaturated */
+    --mint-lite:  #DCEBE5;
+    --rule:       #C6D3CE;
+    --flag:       #B03A2E;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"Source Sans 3",system-ui,sans-serif;
+    font-size:17px; line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:0 24px}
+
+  /* ---------- type ---------- */
+  h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif; line-height:1.08; margin:0}
+  h1{font-size:clamp(38px,6.4vw,68px); font-weight:800; letter-spacing:-.025em}
+  h2{font-size:clamp(26px,3.6vw,36px); font-weight:700; letter-spacing:-.02em}
+  h3{font-size:20px; font-weight:600; letter-spacing:-.01em}
+  p{margin:0 0 16px}
+  a{color:var(--mint)}
+
+  .eyebrow{
+    font-family:"IBM Plex Mono",monospace; font-size:11.5px; font-weight:600;
+    letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft);
+    margin:0 0 14px; display:block;
+  }
+  .lede{font-size:20px; color:var(--ink-soft); max-width:62ch}
+
+  /* ---------- masthead ---------- */
+  .masthead{padding:64px 0 8px}
+  .brandline{
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    font-family:"IBM Plex Mono",monospace; font-size:12px;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft);
+    border-bottom:1.5px solid var(--ink); padding-bottom:12px; margin-bottom:40px;
+  }
+  .brandline strong{color:var(--ink); letter-spacing:.14em}
+  .brandline span{margin-left:auto}
+
+  /* ---------- the signature: a dispensary label ---------- */
+  .script{
+    background:var(--card); margin:40px 0 8px;
+    border:1.5px solid var(--ink); border-radius:2px;
+    box-shadow:6px 6px 0 var(--mint-lite);
+    font-family:"IBM Plex Mono",monospace;
+    animation:rise .7s cubic-bezier(.2,.7,.3,1) both;
+  }
+  @keyframes rise{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+  .script-top{
+    display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+    padding:12px 20px; border-bottom:1.5px dashed var(--rule);
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-soft);
+  }
+  .script-body{padding:22px 20px 8px}
+  .script-row{display:flex; gap:16px; padding:9px 0; border-bottom:1px dashed var(--rule); font-size:14.5px}
+  .script-row:last-child{border-bottom:none}
+  .script-key{
+    flex:0 0 128px; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-soft); padding-top:3px;
+  }
+  .script-val{flex:1; color:var(--ink)}
+  .script-val em{font-style:normal; background:var(--amber-lite); padding:1px 5px; border-radius:2px}
+  .script-foot{
+    padding:12px 20px; border-top:1.5px dashed var(--rule);
+    font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft);
+  }
+  .caption{font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-soft); letter-spacing:.06em; margin:0 0 56px}
+
+  /* ---------- sections ---------- */
+  section{padding:52px 0; border-top:1px solid var(--rule)}
+  section > p, section > ul{max-width:66ch}
+  .hed{margin-bottom:22px}
+
+  ul{padding-left:20px; margin:0 0 16px}
+  li{margin-bottom:9px}
+  li::marker{color:var(--mint)}
+
+  /* ---------- two-up ---------- */
+  .duo{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:26px}
+  .panel{background:var(--card); border:1px solid var(--rule); border-radius:3px; padding:24px}
+  .panel h3{margin-bottom:6px}
+  .panel .who{
+    font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--mint); margin-bottom:14px;
+  }
+  .panel ul{margin-bottom:0; padding-left:18px}
+  .panel li{font-size:16px}
+
+  /* ---------- money ---------- */
+  .money{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:24px}
+  .money .panel{border-left:4px solid var(--amber)}
+  .amount{
+    font-family:"Bricolage Grotesque",sans-serif; font-size:30px; font-weight:800;
+    letter-spacing:-.02em; display:block; margin-bottom:2px;
+  }
+  .unit{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-soft)}
+
+  /* ---------- phases: a real sequence, so numbers earn their place ---------- */
+  .phase{display:flex; gap:22px; padding:20px 0; border-bottom:1px solid var(--rule)}
+  .phase:last-child{border-bottom:none}
+  .phase-n{
+    flex:0 0 62px; font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600;
+    letter-spacing:.1em; color:var(--mint); padding-top:4px;
+  }
+  .phase-b h3{margin-bottom:4px}
+  .phase-b p{margin:0; color:var(--ink-soft); font-size:16px}
+
+  /* ---------- open questions ---------- */
+  .q{background:var(--card); border:1px solid var(--rule); border-left:4px solid var(--flag); border-radius:3px; padding:18px 22px; margin-bottom:12px}
+  .q h3{font-size:17px; margin-bottom:4px}
+  .q p{margin:0; font-size:16px; color:var(--ink-soft)}
+
+  /* ---------- status ---------- */
+  .status{background:var(--ink); color:var(--paper); border-radius:3px; padding:34px; margin-top:26px}
+  .status h3{color:#fff; margin-bottom:14px}
+  .status p{color:#BFD2CC; max-width:62ch}
+  .status p:last-child{margin-bottom:0}
+  .status .eyebrow{color:var(--amber)}
+
+  .fill{background:var(--amber-lite); border-bottom:1.5px solid var(--amber); padding:1px 6px; border-radius:2px; font-weight:600}
+
+  footer{padding:44px 0 72px; border-top:1.5px solid var(--ink); font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft)}
+
+  @media (max-width:680px){
+    .duo,.money{grid-template-columns:1fr}
+    .script-row{flex-direction:column; gap:2px}
+    .script-key{flex:none}
+    .phase{gap:14px}
+    .phase-n{flex:0 0 44px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important; transition:none !important}
+    html{scroll-behavior:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandline">
+      <strong>Locum Planner</strong>
+      <span>Gauteng · South Africa</span>
+    </div>
+    <h1>Pharmacies find a locum in minutes, not on a WhatsApp group at 6am.</h1>
+    <p class="lede" style="margin-top:22px">A two-sided marketplace connecting South African pharmacies with verified relief pharmacists — with registration checks, distance matching and attendance records handled by the platform instead of by a manager phoning around.</p>
+
+    <div class="script" role="img" aria-label="A mock dispensary label describing the product as a prescription">
+      <div class="script-top">
+        <span>Locum Planner · Dispensed</span>
+        <span>Script no. 001</span>
+      </div>
+      <div class="script-body">
+        <div class="script-row"><div class="script-key">Patient</div><div class="script-val">Independent pharmacy, Gauteng — pharmacist off sick, opens in 3 hours</div></div>
+        <div class="script-row"><div class="script-key">Rx</div><div class="script-val"><em>One relief pharmacist</em>, SAPC-registered, verified</div></div>
+        <div class="script-row"><div class="script-key">Directions</div><div class="script-val">Within 15 km. Available today. Rated 4★ or above on reliability.</div></div>
+        <div class="script-row"><div class="script-key">Repeat</div><div class="script-val">As needed — leave, sickness, weekends, public holidays</div></div>
+      </div>
+      <div class="script-foot">Currently filled by: a group chat, a spreadsheet, and luck</div>
+    </div>
+    <p class="caption">↑ The job to be done, written the way a pharmacy would write it.</p>
+  </header>
+
+  <section id="problem">
+    <div class="hed">
+      <span class="eyebrow">The problem</span>
+      <h2>Relief cover is a high-stakes scheduling job run on informal tools.</h2>
+    </div>
+    <p>A pharmacy legally cannot trade without a responsible pharmacist on the floor. When one is sick, on leave, or resigns, the manager has hours — sometimes minutes — to find a registered replacement.</p>
+    <p>Today that happens through WhatsApp groups and personal contacts. Which means:</p>
+    <ul>
+      <li><strong>No verification.</strong> The manager is trusting a screenshot of a registration certificate, if they ask for one at all.</li>
+      <li><strong>No reliability history.</strong> A locum who no-showed at another branch last month arrives with a clean slate.</li>
+      <li><strong>No distance logic.</strong> The group is broadcast to everyone; the person 40 km away sees it at the same time as the person around the corner.</li>
+      <li><strong>No record.</strong> Who actually worked which hours becomes an argument at month-end.</li>
+      <li><strong>No control over who sees a post.</strong> "Looking for a locum" broadcasts to an entire group whether the manager wants that visibility or not.</li>
+      <li><strong>Personal numbers get exposed.</strong> Booking through WhatsApp usually means the locum ends up with the manager's personal number, not a business line.</li>
+    </ul>
+  </section>
+
+  <section id="how">
+    <div class="hed">
+      <span class="eyebrow">How it works</span>
+      <h2>Two sides, one booking.</h2>
+    </div>
+
+    <div class="duo">
+      <div class="panel">
+        <h3>Post a shift, get a verified locum</h3>
+        <div class="who">For pharmacy managers</div>
+        <ul>
+          <li>Post a shift, or flip a "looking for a locum" switch that pushes it straight to your saved regulars first</li>
+          <li>See registration status, distance and reliability history before you accept</li>
+          <li>Confirm in one tap — the shift is locked to one person, no double-booking</li>
+          <li>Check-in and check-out gives you an attendance record instead of a memory</li>
+          <li>A clean record of hours worked to hand to payroll, instead of reconstructing it from memory</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Get found for work near you</h3>
+        <div class="who">For locum pharmacists</div>
+        <ul>
+          <li>Set your availability once; get notified when nearby pharmacies need cover</li>
+          <li>Verify your SAPC registration and employment documents once, reuse it everywhere</li>
+          <li>Build a reliability rating that travels with you and gets you booked first</li>
+          <li>See rates and location up front, before accepting</li>
+          <li>Your own record of every shift worked and hours logged, in one place</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="edge">
+    <div class="hed">
+      <span class="eyebrow">Why this is hard to copy</span>
+      <h2>The defensibility isn't the app. It's the verified supply and the behaviour record.</h2>
+    </div>
+    <ul>
+      <li><strong>Verified supply.</strong> A pool of pharmacists whose registration and employment documents have actually been checked is slow to build and hard to replicate. It's also the thing a manager is really buying.</li>
+      <li><strong>Reliability data.</strong> Every completed shift, cancellation and no-show accumulates. After a year, the platform knows something no WhatsApp group can: who actually turns up.</li>
+      <li><strong>Attendance verification.</strong> Opt-in check-in/check-out with location signals turns "I was there" into a record both sides can rely on.</li>
+      <li><strong>Proximity matching.</strong> Shifts route by distance and reliability rather than being broadcast to everyone, so good locums aren't buried in noise.</li>
+      <li><strong>Visibility is the manager's choice.</strong> A shift can go to saved regulars only, or to a private radius — not to a group of people the manager never chose to broadcast to.</li>
+      <li><strong>No personal numbers exchanged.</strong> All messaging runs through the platform's own business number, not the manager's or the locum's personal phone.</li>
+      <li><strong>Density compounds.</strong> Once enough pharmacies and locums in one metro are on it, being off it costs you shifts.</li>
+    </ul>
+  </section>
+
+  <section id="money">
+    <div class="hed">
+      <span class="eyebrow">How it makes money</span>
+      <h2>One small monthly fee. That's the whole model.</h2>
+    </div>
+    <div class="money" style="grid-template-columns:1fr">
+      <div class="panel">
+        <span class="amount"><span class="fill">R___</span>/month</span>
+        <span class="unit">Per pharmacy · everything included</span>
+        <p style="margin-top:12px; font-size:16px; color:var(--ink-soft)">Access to the verified pool, posting, matching, scheduling and attendance records. No fee per booking, no cut of anyone's rate, no surprise invoice.</p>
+      </div>
+    </div>
+    <p style="margin-top:22px"><strong>One exception, and it's about accountability rather than revenue:</strong> cancel a confirmed shift with less than 24 hours' notice and R10 is added to that month's subscription. Small enough that nobody feels robbed, real enough that late cancellations carry a consequence — which is the entire point, since a late cancellation leaves a pharmacy unable to trade.</p>
+    <p style="margin-top:18px; padding:16px 20px; background:var(--mint-lite); border-radius:3px; font-size:16px"><strong>Locum wages are not our business.</strong> The platform never holds, routes, or takes a cut of what a pharmacy pays a locum. That's handled by each pharmacy's own payroll or HR, exactly as it is today. We provide the record of hours worked; the money stays between employer and locum.</p>
+    <p style="font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--amber); letter-spacing:.04em; margin-top:18px">↑ Fill in the monthly price before sending this out.</p>
+  </section>
+
+  <section id="launch">
+    <div class="hed">
+      <span class="eyebrow">Where it starts</span>
+      <h2>One metro, both sides, hand-built.</h2>
+    </div>
+    <p>Marketplaces die from thin liquidity, not from bad software. So the launch is deliberately narrow: <strong>Johannesburg and greater Gauteng only</strong>, until both sides are dense enough that a posted shift reliably gets filled.</p>
+    <ul>
+      <li>Recruit and verify a founding pool of locum pharmacists before any pharmacy is asked to rely on it</li>
+      <li>Hand-match the first pharmacies personally — concierge, not self-serve — to learn what actually breaks</li>
+      <li>Only open self-serve once shifts fill without intervention</li>
+    </ul>
+  </section>
+
+  <section id="plan">
+    <div class="hed">
+      <span class="eyebrow">Build sequence</span>
+      <h2>Three phases, roughly four months.</h2>
+    </div>
+    <div class="phase">
+      <div class="phase-n">PHASE 1</div>
+      <div class="phase-b">
+        <h3>The core booking loop</h3>
+        <p>Profiles, verification, post a shift, accept a shift, check in and out. Nothing else in phase 1. This is the part that has to be boringly reliable.</p>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-n">PHASE 2</div>
+      <div class="phase-b">
+        <h3>Messaging, reminders and collections</h3>
+        <p>WhatsApp notifications for confirmations and reminders, plus subscription billing and the follow-up flow when a pharmacy's card fails.</p>
+      </div>
+    </div>
+    <div class="phase">
+      <div class="phase-n">PHASE 3</div>
+      <div class="phase-b">
+        <h3>Proactive matching</h3>
+        <p>The "looking for a locum" switch that pushes to saved regulars first and widens outward. Held back deliberately until the system is load-tested — it's the one feature designed to fire a burst of notifications at once.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="open">
+    <div class="hed">
+      <span class="eyebrow">Open questions</span>
+      <h2>What I'm still genuinely unsure about.</h2>
+    </div>
+    <p style="margin-bottom:24px">Listed deliberately — a plan with no stated uncertainty usually just means the uncertainty hasn't been found yet.</p>
+    <div class="q">
+      <h3>Is a flat monthly fee the right price point?</h3>
+      <p>Working belief: yes — a per-booking fee makes the product feel like it's reaching into your pocket every time you use it, which kills adoption. Flat and small is the bet. What isn't settled is the actual number, and whether it's low enough that a small independent signs up without thinking hard.</p>
+    </div>
+    <div class="q">
+      <h3>Are the existing WhatsApp groups already good enough?</h3>
+      <p>Working belief: <strong>not really</strong> — six years in retail pharmacy and a year managing this exact bottleneck says the pain is real. Still a lived-experience judgment rather than a measured one; the concierge phase is where it gets tested against other managers' behaviour, not just my own.</p>
+    </div>
+    <div class="q">
+      <h3>What's the actual liquidity threshold for Gauteng?</h3>
+      <p>Working belief: likely <strong>higher</strong> than the current target in the plan. Not yet re-modelled against that belief — the number in the plan should be treated as provisional until it is.</p>
+    </div>
+    <div class="q">
+      <h3>What does it cost to sign up a pharmacy?</h3>
+      <p>No measured number yet. No paid marketing spend happens until there is one.</p>
+    </div>
+  </section>
+
+  <section id="me">
+    <div class="hed">
+      <span class="eyebrow">Why me</span>
+      <h2>I run a dispensary. This is my own problem.</h2>
+    </div>
+    <p>I've worked in retail pharmacy for six years, and I've managed a dispensary for the last year. This isn't a market report — it's the bottleneck I sit inside every week. Some shifts never get filled at all, because a WhatsApp post has no guarantee the right person even sees it. The insight is the group chat on my own phone.</p>
+    <p>The regulatory detail that makes this product hard for an outsider to get right — registration verification, what "responsible pharmacist" actually requires, why a no-show is a trading risk and not just an inconvenience — is the part I don't have to research.</p>
+  </section>
+
+  <section id="status">
+    <div class="hed">
+      <span class="eyebrow">Where it stands</span>
+      <h2>Specified in full. Not yet built.</h2>
+    </div>
+    <div class="status">
+      <span class="eyebrow">Honest status, <span class="fill" style="background:none; border:none; color:var(--amber); font-weight:600">[month/year]</span></span>
+      <h3>Detailed product and technical specification complete. Build starting.</h3>
+      <p>The product spec, marketing plan and a gated launch-readiness checklist are written and reviewed — including the parts most early plans skip: concurrency handling on booking confirmation, security review scope for handling registration certificates and payslips, monitoring and on-call, and load testing before the burst-notification feature ships.</p>
+      <p>Legal review on employment classification and data protection is the longest external item and runs in parallel with development. WhatsApp messaging infrastructure is already verified and in place.</p>
+      <p><strong style="color:#fff">What I'm looking for:</strong> <span class="fill" style="color:var(--ink)">state it plainly — a technical co-founder, an intro to pharmacy groups, a pilot pharmacy, funding, or just a sharp second opinion.</span></p>
+    </div>
+  </section>
+
+  <footer>
+    Locum Planner · <span class="fill">Your name</span> · <span class="fill">email</span> · <span class="fill">phone</span>
+  </footer>
+
+</div>
+</body>
+</html>
