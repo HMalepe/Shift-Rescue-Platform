@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { api, ApiError } from "@/lib/api";
 import { captureAttendance, explainCaptureFailure } from "@/lib/location";
@@ -53,9 +53,22 @@ export function CheckInScreen({
     setLoaded(true);
   }
 
-  if (!loaded) {
+  /*
+   * `load()` was previously called straight from the render body ("if
+   * (!loaded) void load()"), which fires a fetch as a side effect of
+   * rendering rather than in response to mounting. React can render a
+   * component more than once before committing (Strict Mode's deliberate
+   * double-invoke in development, concurrent rendering discarding a pass) and
+   * each of those calls `attendance.mine` again — several in-flight requests
+   * racing to call `setAttendance` for a single screen. `useEffect` runs once
+   * per real mount instead.
+   */
+  useEffect(() => {
     void load();
-  }
+    // Deliberately keyed on `booking.bookingId` alone: `load` is recreated
+    // every render but always reads the same closed-over value, so this runs
+    // once per booking rather than once per render.
+  }, [booking.bookingId]);
 
   async function record(procedure: "attendance.checkIn" | "attendance.checkOut") {
     setBusy(true);
@@ -108,21 +121,30 @@ export function CheckInScreen({
           gap: theme.gap,
         }}
       >
-        <Text style={{ color: theme.textDim }}>
-          {attendance?.checkedInAt
-            ? `Checked in at ${new Date(attendance.checkedInAt).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit", hour12: false })}`
-            : "Not checked in yet."}
-          {attendance?.checkedOutAt
-            ? `\nChecked out at ${new Date(attendance.checkedOutAt).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit", hour12: false })}`
-            : ""}
-        </Text>
+        {loaded ? (
+          <Text style={{ color: theme.textDim }}>
+            {attendance?.checkedInAt
+              ? `Checked in at ${new Date(attendance.checkedInAt).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit", hour12: false })}`
+              : "Not checked in yet."}
+            {attendance?.checkedOutAt
+              ? `\nChecked out at ${new Date(attendance.checkedOutAt).toLocaleTimeString("en-ZA", { timeZone: "Africa/Johannesburg", hour: "2-digit", minute: "2-digit", hour12: false })}`
+              : ""}
+          </Text>
+        ) : null}
 
-        {busy ? <ActivityIndicator color={theme.accent} /> : null}
+        {busy || !loaded ? <ActivityIndicator color={theme.accent} /> : null}
 
-        {canCheckIn && !busy ? (
+        {/*
+          Gated on `loaded`, not just `busy`. Before the first `attendance.mine`
+          response comes back, `attendance` is `null` — indistinguishable from
+          "confirmed not checked in" — and rendering a working Check-in button
+          against that guess let someone re-check-in over an attendance record
+          that was already there.
+        */}
+        {canCheckIn && !busy && loaded ? (
           <Button label="Check in" onPress={() => void record("attendance.checkIn")} />
         ) : null}
-        {canCheckOut && !busy ? (
+        {canCheckOut && !busy && loaded ? (
           <Button label="Check out" onPress={() => void record("attendance.checkOut")} />
         ) : null}
 
