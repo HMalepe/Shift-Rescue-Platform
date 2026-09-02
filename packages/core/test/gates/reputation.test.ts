@@ -440,3 +440,126 @@ describe("GATE product.reputation — §7 rating a booking", () => {
     expect(reputation.display.kind).toBe("withheld");
   });
 });
+
+describe("GATE product.reputation — §7 delta protection wiring (getReputation)", () => {
+  /**
+   * `ratingsForDisclosure` above is proven as a pure function; these tests
+   * prove `getReputation` actually CALLS it. It did not until this gate: the
+   * function recomputed a fresh tier from every rating on every read, so the
+   * delta-protection control described at the top of tiers.ts was dead code
+   * in production — reputation_snapshots is the checkpoint that closes that
+   * gap.
+   */
+  async function makeRatingScene(locumId: string, endsAt: Date) {
+    const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [manager] = await db
+      .insert(s.users)
+      .values({ role: "manager", email: `rep-delta-m-${tag}@test.invalid`, fullName: "Manager" })
+      .returning({ id: s.users.id });
+    createdUserIds.push(manager!.id);
+
+    const [pharmacy] = await db
+      .insert(s.pharmacies)
+      .values({ name: `Delta ${tag}`, addressLine: "1 Rd", city: "Johannesburg", location: JHB })
+      .returning({ id: s.pharmacies.id });
+    createdPharmacyIds.push(pharmacy!.id);
+
+    await db
+      .insert(s.pharmacyMembers)
+      .values({ pharmacyId: pharmacy!.id, userId: manager!.id, isPrimary: true });
+
+    const [shift] = await db
+      .insert(s.shifts)
+      .values({
+        pharmacyId: pharmacy!.id,
+        createdBy: manager!.id,
+        startsAt: new Date(endsAt.getTime() - 8 * 3_600_000),
+        endsAt,
+        status: "completed",
+        hourlyRateCents: 45_000,
+        location: JHB,
+      })
+      .returning({ id: s.shifts.id });
+
+    const [booking] = await db
+      .insert(s.bookings)
+      .values({ shiftId: shift!.id, locumId, status: "completed" })
+      .returning({ id: s.bookings.id });
+
+    return { managerId: manager!.id, bookingId: booking!.id };
+  }
+
+  const yesterday = () => new Date(Date.now() - 24 * 3_600_000);
+
+  it("does not move the published tier until DISCLOSURE_BATCH new ratings arrive", async () => {
+    const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [locum] = await db
+      .insert(s.users)
+      .values({ role: "locum", email: `rep-delta-l-${tag}@test.invalid`, fullName: "Delta Locum" })
+      .returning({ id: s.users.id });
+    createdUserIds.push(locum!.id);
+    await db
+      .insert(s.locumProfiles)
+      .values({ userId: locum!.id, verification: "verified", baseLocation: JHB, completedShifts: 20 });
+
+    // MAX_REQUIRED_RATERS caps the distinct-rater floor at 5 regardless of how
+    // dense the seeded market is, so five raters always clears it.
+    for (let i = 0; i < 5; i += 1) {
+      const scene = await makeRatingScene(locum!.id, yesterday());
+      await rateBooking(db, { bookingId: scene.bookingId, raterId: scene.managerId, score: 5 });
+    }
+
+    const published = await getReputation(db, locum!.id);
+    expect(published.display).toEqual({ kind: "tier", tier: "excellent" });
+    expect(published.ratingCount).toBe(5);
+
+    // One new, very different rating (6th total) arrives. Recomputing on it
+    // alone would let the subject solve for exactly what it was — so the
+    // published tier must not move yet, even though the ALWAYS-SAFE counts do.
+    const sixth = await makeRatingScene(locum!.id, yesterday());
+    await rateBooking(db, { bookingId: sixth.bookingId, raterId: sixth.managerId, score: 1 });
+
+    const stillCached = await getReputation(db, locum!.id);
+    expect(stillCached.display).toEqual(published.display);
+    expect(stillCached.ratingCount).toBe(6);
+
+    // A second new rating (7th total) crosses DISCLOSURE_BATCH since the last
+    // publish (5 -> 7 is +2). The tier is now allowed to recompute, and with
+    // two one-star ratings pulling the mean down it actually changes.
+    const seventh = await makeRatingScene(locum!.id, yesterday());
+    await rateBooking(db, { bookingId: seventh.bookingId, raterId: seventh.managerId, score: 1 });
+
+    const recomputed = await getReputation(db, locum!.id);
+    expect(recomputed.display).not.toEqual(published.display);
+    expect(recomputed.ratingCount).toBe(7);
+  });
+
+  it("publishes immediately for a subject's very first rating", async () => {
+    // No prior snapshot means no earlier state to diff against, so there is
+    // nothing a first publish could leak — it must not wait for a second
+    // rating to arrive before showing anything.
+    const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const [locum] = await db
+      .insert(s.users)
+      .values({ role: "locum", email: `rep-delta-first-${tag}@test.invalid`, fullName: "First Timer" })
+      .returning({ id: s.users.id });
+    createdUserIds.push(locum!.id);
+    await db
+      .insert(s.locumProfiles)
+      .values({ userId: locum!.id, verification: "verified", baseLocation: JHB, completedShifts: 20 });
+
+    for (let i = 0; i < 5; i += 1) {
+      const scene = await makeRatingScene(locum!.id, yesterday());
+      await rateBooking(db, { bookingId: scene.bookingId, raterId: scene.managerId, score: 5 });
+    }
+
+    const result = await getReputation(db, locum!.id);
+    expect(result.display).toEqual({ kind: "tier", tier: "excellent" });
+
+    const [snapshot] = await db
+      .select()
+      .from(s.reputationSnapshots)
+      .where(eq(s.reputationSnapshots.subjectId, locum!.id));
+    expect(snapshot?.publishedRatingCount).toBe(5);
+  });
+});

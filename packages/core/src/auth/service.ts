@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { authAttempts, sessions, users, type Database, type UserRole } from "@locum/db";
 import { DomainError } from "../errors";
 import { getDummyHash, hashPassword, verifyPassword } from "./password";
@@ -9,7 +9,7 @@ import {
   signAccessToken,
   type AccessTokenClaims,
 } from "./tokens";
-import { verifyTotp } from "./totp";
+import { matchedTotpCounter } from "./totp";
 
 export interface AuthConfig {
   readonly secret: string;
@@ -74,6 +74,7 @@ export async function login(
       passwordHash: users.passwordHash,
       mfaSecret: users.mfaSecret,
       mfaEnrolledAt: users.mfaEnrolledAt,
+      mfaLastUsedCounter: users.mfaLastUsedCounter,
       disabledAt: users.disabledAt,
     })
     .from(users)
@@ -123,8 +124,35 @@ export async function login(
       await recordAttempt(db, email, input.ipAddress, false, "mfa_required");
       throw new DomainError("MFA_REQUIRED", "A verification code is required");
     }
-    if (!verifyTotp(user.mfaSecret, input.totpCode)) {
+
+    const counter = matchedTotpCounter(user.mfaSecret, input.totpCode);
+    if (counter === undefined) {
       await recordAttempt(db, email, input.ipAddress, false, "mfa_failed");
+      throw new DomainError("MFA_INVALID", "Invalid verification code");
+    }
+
+    /*
+     * Single-use enforcement. A code is a fixed function of its 30-second
+     * step, so `verifyTotp` alone would accept the SAME code again and again
+     * until it aged out of the ±90s window — a shoulder-surfed or
+     * log-leaked code stays live for a stranger the whole time. The
+     * conditional UPDATE is what makes this safe under concurrency too: two
+     * requests racing the same code can both pass the signature check above,
+     * but only one can win this WHERE clause, so only one issues a session.
+     */
+    const consumed = await db
+      .update(users)
+      .set({ mfaLastUsedCounter: counter })
+      .where(
+        and(
+          eq(users.id, user.id),
+          or(isNull(users.mfaLastUsedCounter), lt(users.mfaLastUsedCounter, counter)),
+        ),
+      )
+      .returning({ id: users.id });
+
+    if (consumed.length === 0) {
+      await recordAttempt(db, email, input.ipAddress, false, "mfa_replayed");
       throw new DomainError("MFA_INVALID", "Invalid verification code");
     }
   }

@@ -11,6 +11,7 @@ import {
   pharmacyMembers,
   rateLimitCounters,
   ratings,
+  reputationSnapshots,
   shiftOffers,
   sessions,
   users,
@@ -69,6 +70,8 @@ export interface DataExport {
   /** §12.3 — shifts this person was proactively messaged about. */
   readonly shiftsYouWereOffered: ReadonlyArray<Record<string, unknown>>;
   readonly decisionsAboutYou: ReadonlyArray<Record<string, unknown>>;
+  /** §7 — the last tier disclosed and how many ratings it was computed from. */
+  readonly reputationSnapshot: Record<string, unknown> | null;
   /** Plain-language note on what is held and what is withheld, and why. */
   readonly notes: ReadonlyArray<string>;
 }
@@ -90,6 +93,7 @@ export const EXPORTED_TABLES: readonly string[] = [
   "shift_offers",
   "rate_limit_counters",
   "audit_log",
+  "reputation_snapshots",
 ];
 
 export async function exportSubjectData(
@@ -138,6 +142,7 @@ export async function exportSubjectData(
     usageCounters,
     offers,
     decisions,
+    snapshot,
   ] = await Promise.all([
     db.select().from(locumProfiles).where(eq(locumProfiles.userId, subjectId)),
     db.select().from(pharmacyMembers).where(eq(pharmacyMembers.userId, subjectId)),
@@ -270,6 +275,20 @@ export async function exportSubjectData(
       })
       .from(auditLog)
       .where(or(eq(auditLog.subjectId, subjectId), eq(auditLog.actorId, subjectId))),
+    /*
+     * §7 delta protection's own checkpoint. Disclosed for the same reason it
+     * is erased: the retention test refuses a table that is one without being
+     * the other. The published tier itself is not a secret from its own
+     * subject — only from OTHER people trying to solve for who rated them.
+     */
+    db
+      .select({
+        publishedRatingCount: reputationSnapshots.publishedRatingCount,
+        publishedDisplay: reputationSnapshots.publishedDisplay,
+        updatedAt: reputationSnapshots.updatedAt,
+      })
+      .from(reputationSnapshots)
+      .where(eq(reputationSnapshots.subjectId, subjectId)),
   ]);
 
   return {
@@ -291,6 +310,7 @@ export async function exportSubjectData(
     usageCounters,
     shiftsYouWereOffered: offers,
     decisionsAboutYou: decisions,
+    reputationSnapshot: snapshot[0] ?? null,
     notes: [
       "This is everything Locum Planner holds about you, across every table.",
       "Your password and authenticator secret are deliberately excluded: returning them would turn a data request into a way of stealing an account.",

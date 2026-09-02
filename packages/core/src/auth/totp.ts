@@ -105,24 +105,31 @@ export function generateTotp(
 }
 
 /**
- * Verifies a submitted code against the current and adjacent time windows.
+ * Checks a submitted code against the current and adjacent time windows and
+ * returns the counter it matched, or `undefined` if none did.
  *
  * The comparison is constant-time. A six-digit code is small enough that a
  * timing side channel plus the ±1 window would meaningfully narrow the search
  * space, and the cost of doing it properly is nil.
+ *
+ * Returning the counter (rather than a bare boolean) is what lets a caller
+ * enforce single-use: a code is a fixed function of its time step, so
+ * knowing WHICH step matched is what makes a replay of that exact code
+ * detectable, without penalising a caller who simply asks again 30 seconds
+ * later and lands on a different counter.
  */
-export function verifyTotp(
+export function matchedTotpCounter(
   secret: string,
   code: string,
   atMs: number = Date.now(),
-): boolean {
+): number | undefined {
   const submitted = code.trim();
-  if (!/^\d{6}$/.test(submitted)) return false;
+  if (!/^\d{6}$/.test(submitted)) return undefined;
 
   const currentCounter = Math.floor(atMs / 1000 / PERIOD_SECONDS);
   const submittedBuffer = Buffer.from(submitted, "utf8");
 
-  let matched = false;
+  let matched: number | undefined;
   for (
     let counter = currentCounter - WINDOW_TOLERANCE;
     counter <= currentCounter + WINDOW_TOLERANCE;
@@ -132,7 +139,7 @@ export function verifyTotp(
     try {
       expected = generateTotpForCounter(secret, counter);
     } catch {
-      return false;
+      return undefined;
     }
     const expectedBuffer = Buffer.from(expected, "utf8");
     // No early exit: every window is compared so total time does not reveal
@@ -141,10 +148,19 @@ export function verifyTotp(
       expectedBuffer.length === submittedBuffer.length &&
       timingSafeEqual(expectedBuffer, submittedBuffer)
     ) {
-      matched = true;
+      matched = counter;
     }
   }
   return matched;
+}
+
+/** Whether a submitted code matches any window. See `matchedTotpCounter`. */
+export function verifyTotp(
+  secret: string,
+  code: string,
+  atMs: number = Date.now(),
+): boolean {
+  return matchedTotpCounter(secret, code, atMs) !== undefined;
 }
 
 /** otpauth:// URI for provisioning via QR code. */
