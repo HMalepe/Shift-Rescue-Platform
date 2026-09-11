@@ -59,10 +59,20 @@ Environment variables:
 POSTGRES_USER=locum
 POSTGRES_PASSWORD=<generate a strong one>
 POSTGRES_DB=locum_planner
+PGDATA=/var/lib/postgresql/data/pgdata
 ```
 
 Attach a Volume mounted at `/var/lib/postgresql/data` — without it, every
 redeploy starts from an empty database.
+
+`PGDATA` above is not optional. Railway volumes have a `lost+found` directory
+at their root, and Postgres's own initdb refuses to initialise into a
+directory that already contains anything — so mounting the volume straight at
+`/var/lib/postgresql/data` and leaving `PGDATA` unset fails on first boot with
+"initdb: error: directory ... exists but is not empty". Pointing `PGDATA` at
+an empty subdirectory of the mount (`pgdata/`) gives Postgres a genuinely
+empty directory to initialise into, while `lost+found` sits alongside it,
+still on the same persistent volume.
 
 ### 2. `redis`
 
