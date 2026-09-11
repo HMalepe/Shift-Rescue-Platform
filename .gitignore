@@ -23,6 +23,7 @@ coverage/
 # local database volumes
 .postgres-data/
 .redis-data/
+dump.rdb
 
 # terraform
 .terraform/

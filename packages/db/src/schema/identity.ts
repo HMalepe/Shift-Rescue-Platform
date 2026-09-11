@@ -41,6 +41,17 @@ export const users = pgTable(
      */
     mfaSecret: text("mfa_secret"),
     mfaEnrolledAt: timestamp("mfa_enrolled_at", { withTimezone: true }),
+    /**
+     * §12.1 — single-use enforcement for TOTP codes.
+     *
+     * `verifyTotp` alone accepts any code in the ±90s window every time it is
+     * presented, so a shoulder-surfed code stays valid until it naturally
+     * expires. This is the counter of the last code actually consumed; a
+     * login is only accepted if its matched counter is strictly greater,
+     * enforced with a conditional UPDATE rather than a separate check, so two
+     * concurrent logins racing the same code cannot both win.
+     */
+    mfaLastUsedCounter: integer("mfa_last_used_counter"),
 
     /**
      * §12.1 — sessions must be invalidatable on password change. Rather than

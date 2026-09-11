@@ -57,13 +57,18 @@ COPY packages/observability/package.json packages/observability/
 COPY tools/loadtest/package.json tools/loadtest/
 COPY tools/devdata/package.json tools/devdata/
 
-# No explicit `id=` on the cache mount: Railway's builder rejects a bare id
-# like `pnpm` (it wants cache mounts scoped per-service and errors instead of
-# silently namespacing it for you), and dropping `id=` lets BuildKit derive
-# one from the mount target — which works identically here, in GitHub
-# Actions, and on Railway, without hardcoding a builder-specific scheme.
-RUN --mount=type=cache,target=/pnpm/store \
-    PNPM_HOME=/pnpm pnpm install --frozen-lockfile
+# No cache mount, deliberately, after two failed round-trips on this exact
+# line: first with no `id=` (Railway's builder: "is missing an id
+# argument"), then with `id=pnpm-store` (also rejected, by the same builder,
+# with no clearer error surfaced in the build log than "failed to build an
+# image"). Neither the BuildKit spec nor Railway's own docs pin down what
+# `id=` value its builder actually wants, and this line has now cost three
+# build attempts guessing at it. A plain, mount-free `pnpm install` gives up
+# the cross-build cache reuse between this Dockerfile's two targets (api and
+# worker both install from the same lockfile) in exchange for a build that
+# cannot fail on cache-mount syntax again. Revisit only with a confirmed
+# working example from Railway's own docs in hand, not another guess.
+RUN PNPM_HOME=/pnpm pnpm install --frozen-lockfile
 
 FROM node:22-bookworm-slim AS runtime
 

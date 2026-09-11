@@ -7,6 +7,7 @@ import {
   locumProfiles,
   messages,
   pharmacyMembers,
+  reputationSnapshots,
   shiftOffers,
   ratings,
   sessions,
@@ -163,6 +164,21 @@ export async function eraseSubject(
       action: "delete",
       rows: count(
         await tx.delete(pharmacyMembers).where(eq(pharmacyMembers.userId, subjectId)),
+      ),
+    });
+
+    /*
+     * §7's delta-protection checkpoint. It is a cache of a decision, not a
+     * record of one — deleting it here does not touch the ratings themselves
+     * (handled below, anonymised) and cannot resurface a no-show count.
+     */
+    affected.push({
+      table: "reputation_snapshots",
+      action: "delete",
+      rows: count(
+        await tx
+          .delete(reputationSnapshots)
+          .where(eq(reputationSnapshots.subjectId, subjectId)),
       ),
     });
 

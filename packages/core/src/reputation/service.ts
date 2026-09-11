@@ -4,11 +4,17 @@ import {
   locumProfiles,
   pharmacyMembers,
   ratings,
+  reputationSnapshots,
   shifts,
   type Database,
 } from "@locum/db";
 import { DomainError } from "../errors";
-import { computeReputation, type Reputation } from "./tiers";
+import {
+  computeReputation,
+  ratingsForDisclosure,
+  type Reputation,
+  type ReputationDisplay,
+} from "./tiers";
 
 /**
  * §7 — reading and writing reputation.
@@ -186,6 +192,42 @@ export async function getReputation(
     .where(eq(ratings.rateeId, subjectId))
     .orderBy(asc(ratings.createdAt));
 
+  const completedShifts = profile?.completedShifts ?? 0;
+  const noShows = profile?.noShows ?? 0;
+  const distinctRaters = new Set(received.map((r) => r.raterId)).size;
+
+  const [snapshot] = await db
+    .select({
+      publishedRatingCount: reputationSnapshots.publishedRatingCount,
+      publishedDisplay: reputationSnapshots.publishedDisplay,
+    })
+    .from(reputationSnapshots)
+    .where(eq(reputationSnapshots.subjectId, subjectId))
+    .limit(1);
+
+  /*
+   * §7 delta protection (tiers.ts `ratingsForDisclosure`). Without a prior
+   * snapshot there is no earlier state to diff a new rating against, so the
+   * first-ever publish is unrestricted; after that, a tier is only
+   * recomputed once enough new ratings have arrived to move it as a group.
+   */
+  const toDisclose = snapshot
+    ? ratingsForDisclosure(received, snapshot.publishedRatingCount)
+    : received;
+
+  if (toDisclose === undefined) {
+    // Too few new ratings since the last publish. Republish the PREVIOUS
+    // display unchanged; only the always-safe counts (never attributable to
+    // any one rater) are allowed to move live.
+    return {
+      display: JSON.parse(snapshot!.publishedDisplay) as ReputationDisplay,
+      ratingCount: received.length,
+      distinctRaters,
+      completedShifts,
+      noShows,
+    };
+  }
+
   const plausibleRaterPool = profile?.baseLocation
     ? await countNearbyPharmacies(db, profile.baseLocation)
     : /*
@@ -196,12 +238,30 @@ export async function getReputation(
        */
       0;
 
-  return computeReputation({
-    ratings: received,
-    completedShifts: profile?.completedShifts ?? 0,
-    noShows: profile?.noShows ?? 0,
+  const reputation = computeReputation({
+    ratings: toDisclose,
+    completedShifts,
+    noShows,
     plausibleRaterPool,
   });
+
+  await db
+    .insert(reputationSnapshots)
+    .values({
+      subjectId,
+      publishedRatingCount: received.length,
+      publishedDisplay: JSON.stringify(reputation.display),
+    })
+    .onConflictDoUpdate({
+      target: reputationSnapshots.subjectId,
+      set: {
+        publishedRatingCount: received.length,
+        publishedDisplay: JSON.stringify(reputation.display),
+        updatedAt: sql`now()`,
+      },
+    });
+
+  return reputation;
 }
 
 async function countNearbyPharmacies(

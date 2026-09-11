@@ -278,6 +278,27 @@ export const ratings = pgTable(
 );
 
 /**
+ * §7 — the delta-protection checkpoint: what tier was last disclosed for a
+ * subject, and how many ratings existed when it was computed.
+ *
+ * `ratingsForDisclosure` (packages/core/src/reputation/tiers.ts) is the pure
+ * rule; this is where its decision is persisted, so a subject watching their
+ * own tier cannot attribute a change to any single rating landing in between
+ * — the tier only moves once `DISCLOSURE_BATCH` new ratings have accumulated.
+ */
+export const reputationSnapshots = pgTable("reputation_snapshots", {
+  subjectId: uuid("subject_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  publishedRatingCount: integer("published_rating_count").notNull().default(0),
+  /** JSON-encoded `ReputationDisplay`. */
+  publishedDisplay: text("published_display").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .default(now),
+});
+
+/**
  * §6 — time-gated messaging with disintermediation detection. All of it routes
  * through the platform sender (§10.1): no personal numbers are ever exchanged.
  */

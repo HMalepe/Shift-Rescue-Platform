@@ -58,27 +58,27 @@ export interface ContextDeps {
  * request from a chatty client. Sessions are indexed by primary key, so the
  * check is a single point read.
  */
-export async function createContext(
-  deps: ContextDeps,
+/**
+ * Resolves the caller from a Bearer access token, independent of tRPC.
+ *
+ * Factored out of `createContext` so the one REST route that streams binary
+ * data (`GET /documents/:id` — tRPC's JSON transport cannot carry document
+ * bytes) authenticates with exactly the same session-revocation, user-disabled
+ * and password-watermark checks as every tRPC procedure, rather than a
+ * hand-rolled copy that quietly drifts from them.
+ */
+export async function resolveAuthenticatedUser(
+  deps: Pick<ContextDeps, "db" | "config">,
   request: FastifyRequest,
-): Promise<TrpcContext> {
-  const base = {
-    db: deps.db,
-    config: deps.config,
-    ipAddress: request.ip,
-    documentStorage: deps.documentStorage,
-    documentScanner: deps.documentScanner,
-    whatsappSender: deps.whatsappSender,
-  };
-
+): Promise<AuthenticatedUser | null> {
   const header = request.headers.authorization;
   if (typeof header !== "string" || !header.startsWith("Bearer ")) {
-    return { ...base, user: null };
+    return null;
   }
 
   const verified = verifyAccessToken(header.slice(7), deps.config.AUTH_SECRET);
   if (!verified.valid) {
-    return { ...base, user: null };
+    return null;
   }
 
   const { claims } = verified;
@@ -105,19 +105,33 @@ export async function createContext(
     row.userDisabledAt !== null ||
     row.sessionIssuedAt < row.sessionsValidFrom
   ) {
-    return { ...base, user: null };
+    return null;
   }
 
   return {
-    ...base,
-    user: {
-      id: claims.sub,
-      // Role comes from the database, not the token. A role changed since the
-      // token was issued must take effect now — a demoted admin should not
-      // keep admin authority for the life of their access token.
-      role: row.role,
-      mfaSatisfied: claims.mfa,
-      sessionId: claims.sid,
-    },
+    id: claims.sub,
+    // Role comes from the database, not the token. A role changed since the
+    // token was issued must take effect now — a demoted admin should not
+    // keep admin authority for the life of their access token.
+    role: row.role,
+    mfaSatisfied: claims.mfa,
+    sessionId: claims.sid,
   };
+}
+
+export async function createContext(
+  deps: ContextDeps,
+  request: FastifyRequest,
+): Promise<TrpcContext> {
+  const base = {
+    db: deps.db,
+    config: deps.config,
+    ipAddress: request.ip,
+    documentStorage: deps.documentStorage,
+    documentScanner: deps.documentScanner,
+    whatsappSender: deps.whatsappSender,
+  };
+
+  const user = await resolveAuthenticatedUser(deps, request);
+  return { ...base, user };
 }

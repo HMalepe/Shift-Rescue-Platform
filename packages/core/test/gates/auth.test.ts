@@ -203,6 +203,60 @@ describe("GATE security.auth — admin MFA (§12.1)", () => {
     expect(verified.valid && verified.claims.mfa).toBe(true);
   });
 
+  it("refuses to accept the same TOTP code twice (single-use enforcement)", async () => {
+    const secret = generateTotpSecret();
+    const admin = await createUser({
+      role: "admin",
+      password: "admin-password!",
+      mfaSecret: secret,
+    });
+    const code = generateTotp(secret);
+
+    // First presentation succeeds and consumes the code's time step.
+    const tokens = await login(db, config, {
+      email: admin.email,
+      password: "admin-password!",
+      totpCode: code,
+    });
+    expect(verifyAccessToken(tokens.accessToken, config.secret).valid).toBe(true);
+
+    // A second login with the EXACT SAME code — e.g. shoulder-surfed, or
+    // captured from a log — must be refused even though it is still well
+    // within the ±90s acceptance window.
+    await expect(
+      login(db, config, {
+        email: admin.email,
+        password: "admin-password!",
+        totpCode: code,
+      }),
+    ).rejects.toMatchObject({ code: "MFA_INVALID" });
+  });
+
+  it("still accepts a later, different code from the same secret", async () => {
+    const secret = generateTotpSecret();
+    const admin = await createUser({
+      role: "admin",
+      password: "admin-password!",
+      mfaSecret: secret,
+    });
+    const now = Date.now();
+
+    await login(db, config, {
+      email: admin.email,
+      password: "admin-password!",
+      totpCode: generateTotp(secret, now),
+    });
+
+    // A code from a later 30s step is a different, unconsumed counter — single-use
+    // enforcement must not lock the account out of its own next code.
+    const tokens = await login(db, config, {
+      email: admin.email,
+      password: "admin-password!",
+      totpCode: generateTotp(secret, now + 30_000),
+    });
+    expect(verifyAccessToken(tokens.accessToken, config.secret).valid).toBe(true);
+  });
+
   it("accepts adjacent time windows but not distant ones", () => {
     const secret = generateTotpSecret();
     const now = Date.now();

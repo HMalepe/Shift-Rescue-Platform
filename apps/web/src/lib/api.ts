@@ -101,7 +101,7 @@ async function callOnce<T>(
  */
 let refreshInFlight: Promise<string | undefined> | undefined;
 
-async function refreshSession(): Promise<string | undefined> {
+export async function refreshSession(): Promise<string | undefined> {
   if (refreshInFlight) return refreshInFlight;
 
   refreshInFlight = (async () => {

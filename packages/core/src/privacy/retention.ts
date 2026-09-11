@@ -203,6 +203,12 @@ export const RETENTION_POLICY: readonly RetentionRule[] = [
     action: "retain",
     because: "§12.5 gate ledger. Engineering records, no user data.",
   },
+  {
+    table: "reputation_snapshots",
+    action: "delete",
+    because:
+      "The last disclosed tier and the rating count it was computed from — a caching checkpoint for §7 delta protection, not a record of anything that happened. Retaining it for an erased subject serves no one and a stale published tier for an account that no longer exists is pure liability.",
+  },
 ];
 
 export function ruleFor(table: string): RetentionRule | undefined {

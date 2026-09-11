@@ -23,6 +23,7 @@ import {
 import { registerTwilioStatusWebhook } from "./twilio/status-webhook";
 import { registerPayfastItnWebhook } from "./payfast/itn-webhook";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerDocumentRoutes } from "./routes/documents";
 import {
   fastifyTRPCPlugin,
   type CreateFastifyContextOptions,
@@ -142,6 +143,7 @@ export async function buildServer(
   app.get("/health/live", async () => ({ status: "alive" }));
 
   registerAuthRoutes(app, { db, config });
+  registerDocumentRoutes(app, { db, config, documentStorage });
   /*
    * §0.1 — the deliberately broken endpoint.
    *

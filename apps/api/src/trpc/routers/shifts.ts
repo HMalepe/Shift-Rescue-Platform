@@ -9,7 +9,7 @@ import {
   pharmacyMembers,
   shifts,
 } from "@locum/db";
-import { QUOTAS, startLookingForLocum } from "@locum/core";
+import { QUOTAS, canPostShifts, startLookingForLocum } from "@locum/core";
 import { router, managerProcedure, locumProcedure, quota } from "../trpc";
 
 const createShiftSchema = z
@@ -108,6 +108,21 @@ export const shiftsRouter = router({
         throw new TRPCError({
           code: "FORBIDDEN",
           message: "You do not manage this pharmacy",
+        });
+      }
+
+      /*
+       * §2 — a pharmacy whose subscription has run the dunning ladder to
+       * exhaustion may not post new shifts until it pays. `past_due` still
+       * can (see `canPostShifts`'s comment); only `restricted` is blocked.
+       * Without this check the entire dunning state machine is decorative:
+       * `restricted` would restrict nothing a manager actually does.
+       */
+      if (!(await canPostShifts(ctx.db, input.pharmacyId))) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message:
+            "This pharmacy's subscription is restricted. Resolve the outstanding payment to post new shifts.",
         });
       }
 
