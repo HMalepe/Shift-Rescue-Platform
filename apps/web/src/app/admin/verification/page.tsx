@@ -96,7 +96,9 @@ export default async function VerificationQueuePage({
       <main className="shell">
         <h1>Verification queue</h1>
         <p className="lede">
-          Documents that passed their security scan and are waiting on a human.
+          {pending.length === 0
+            ? "Documents that passed their security scan and are waiting on a human."
+            : `${pending.length} document${pending.length === 1 ? "" : "s"} waiting on a human.`}
         </p>
 
         {error ? (

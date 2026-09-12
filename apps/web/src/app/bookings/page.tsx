@@ -62,7 +62,11 @@ export default async function BookingsPage({
       <Masthead role={viewer.role} />
       <main className="shell">
         <h1>My bookings</h1>
-        <p className="lede">Shifts you have applied for or confirmed.</p>
+        <p className="lede">
+          {bookings.length === 0
+            ? "Shifts you have applied for or confirmed."
+            : `${bookings.length} shift${bookings.length === 1 ? "" : "s"} applied for or confirmed.`}
+        </p>
 
         {error ? (
           <p className="alert alert-error" role="alert">

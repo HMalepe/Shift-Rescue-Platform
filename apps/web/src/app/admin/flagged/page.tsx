@@ -35,8 +35,8 @@ export default async function FlaggedMessagesPage() {
       <main className="shell">
         <h1>Flagged messages</h1>
         <p className="lede">
-          Messages whose wording matched a disintermediation rule. All of them were
-          delivered normally — this is a review queue, not a block list.
+          {flagged.length === 0 ? "Nothing flagged right now. " : `${flagged.length} flagged. `}
+          All were delivered normally — this is a review queue, not a block list.
         </p>
 
         <p className="alert alert-note">
