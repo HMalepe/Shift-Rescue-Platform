@@ -15,7 +15,7 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOST: z.string().default("0.0.0.0"),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   DATABASE_MAX_CONNECTIONS: z.coerce.number().int().positive().default(10),
 
   /**
@@ -26,9 +26,9 @@ const schema = z.object({
    * an unset secret means signature validation is skipped, which turns the
    * webhook into an unauthenticated write endpoint.
    */
-  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().trim().optional(),
   /** Public base URL, needed because Twilio signs the full request URL. */
-  PUBLIC_BASE_URL: z.string().url().default("http://localhost:3000"),
+  PUBLIC_BASE_URL: z.string().trim().url().default("http://localhost:3000"),
 
   /** §12.1 — rate limiting on public endpoints. */
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
@@ -46,7 +46,7 @@ const schema = z.object({
    * Signing key for access tokens. Rotating it invalidates every issued token.
    * Required — there is no safe default for a signing secret.
    */
-  AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
+  AUTH_SECRET: z.string().trim().min(32, "AUTH_SECRET must be at least 32 characters"),
 
   /**
    * §0.1 — where alerts go. Sentry, PagerDuty Events, Opsgenie, a Slack hook:
@@ -55,7 +55,7 @@ const schema = z.object({
    * because a service that silently drops its own alerts looks monitored and
    * is not.
    */
-  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_WEBHOOK_URL: z.string().trim().url().optional(),
   ALERT_MIN_SEVERITY: z.enum(["routine", "warn", "page"]).default("warn"),
   /** Commit SHA, so an alert can be tied to a deploy. */
   RELEASE: z.string().optional(),
@@ -79,10 +79,11 @@ const schema = z.object({
    * cannot be hard-coded; a missing SID makes the adapter throw rather than
    * silently downgrade to a free-form send.
    */
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_FROM_NUMBER: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().trim().optional(),
+  TWILIO_FROM_NUMBER: z.string().trim().optional(),
   TWILIO_CONTENT_SIDS: z
     .string()
+    .trim()
     .default("{}")
     .transform((raw, ctx) => {
       try {
@@ -104,7 +105,7 @@ const schema = z.object({
    * upload path that stores unscanned files is worse than no upload path,
    * because the admin queue presents them as having passed.
    */
-  CLAMD_HOST: z.string().optional(),
+  CLAMD_HOST: z.string().trim().optional(),
   CLAMD_PORT: z.coerce.number().int().positive().default(3310),
 
   /**
@@ -122,14 +123,14 @@ const schema = z.object({
    * `provider-managed` the moment a bucket name appears is exactly the kind of
    * inferred security posture this file has otherwise refused to allow.
    */
-  S3_BUCKET: z.string().optional(),
-  S3_REGION: z.string().default("af-south-1"),
+  S3_BUCKET: z.string().trim().optional(),
+  S3_REGION: z.string().trim().default("af-south-1"),
   S3_SSE_MODE: z.enum(["aws-kms", "provider-managed"]).optional(),
-  S3_KMS_KEY_ID: z.string().optional(),
+  S3_KMS_KEY_ID: z.string().trim().optional(),
   /** Set for R2/MinIO; unset targets AWS S3 directly. */
-  S3_ENDPOINT: z.string().optional(),
-  AWS_ACCESS_KEY_ID: z.string().optional(),
-  AWS_SECRET_ACCESS_KEY: z.string().optional(),
+  S3_ENDPOINT: z.string().trim().optional(),
+  AWS_ACCESS_KEY_ID: z.string().trim().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().trim().optional(),
 
   /**
    * §2 — Payfast tokenization ("Subscribe"). All three required together; a
@@ -137,11 +138,11 @@ const schema = z.object({
    * than failing loudly, so `assertProductionReady` treats a partial set the
    * same as none at all.
    */
-  PAYFAST_MERCHANT_ID: z.string().optional(),
-  PAYFAST_MERCHANT_KEY: z.string().optional(),
-  PAYFAST_PASSPHRASE: z.string().optional(),
+  PAYFAST_MERCHANT_ID: z.string().trim().optional(),
+  PAYFAST_MERCHANT_KEY: z.string().trim().optional(),
+  PAYFAST_PASSPHRASE: z.string().trim().optional(),
   /** Hosted checkout page the browser is redirected to. */
-  PAYFAST_PROCESS_URL: z.string().url().optional(),
+  PAYFAST_PROCESS_URL: z.string().trim().url().optional(),
   /**
    * Where Payfast redirects the manager's BROWSER after paying — the Vercel
    * dashboard, not this API. `PUBLIC_BASE_URL` above is a different thing: it
@@ -149,9 +150,9 @@ const schema = z.object({
    * Conflating the two would send a manager's browser to a bare JSON API
    * after checkout instead of back to the dashboard.
    */
-  DASHBOARD_BASE_URL: z.string().url().default("http://localhost:3001"),
+  DASHBOARD_BASE_URL: z.string().trim().url().default("http://localhost:3001"),
   /** ITN postback-validate host — see `.env.example` for why this is not a boolean. */
-  PAYFAST_ITN_HOST: z.string().url().optional(),
+  PAYFAST_ITN_HOST: z.string().trim().url().optional(),
   /**
    * §2's flat monthly fee. No figure is fixed in the product spec, so this is
    * a configuration value rather than a hardcoded constant — R899 is a

@@ -12,7 +12,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   ENVIRONMENT: z.string().default("local"),
 
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_URL: z.string().trim().min(1, "DATABASE_URL is required"),
   /**
    * Deliberately smaller than the API's pool.
    *
@@ -48,11 +48,11 @@ const schema = z.object({
   /** §11.6 — soft daily cap. Alerts, never blocks. */
   WHATSAPP_DAILY_SPEND_CAP_CENTS: z.coerce.number().int().positive().optional(),
 
-  TWILIO_ACCOUNT_SID: z.string().optional(),
-  TWILIO_AUTH_TOKEN: z.string().optional(),
-  TWILIO_WHATSAPP_FROM: z.string().optional(),
+  TWILIO_ACCOUNT_SID: z.string().trim().optional(),
+  TWILIO_AUTH_TOKEN: z.string().trim().optional(),
+  TWILIO_WHATSAPP_FROM: z.string().trim().optional(),
   /** §11.5 — where delivery receipts are posted back. */
-  TWILIO_STATUS_CALLBACK_URL: z.string().url().optional(),
+  TWILIO_STATUS_CALLBACK_URL: z.string().trim().url().optional(),
   /**
    * §11.2 — template name to Twilio Content SID, as JSON.
    *
@@ -62,6 +62,7 @@ const schema = z.object({
    */
   TWILIO_CONTENT_SIDS: z
     .string()
+    .trim()
     .default("{}")
     .transform((raw, ctx) => {
       try {
@@ -72,15 +73,15 @@ const schema = z.object({
       }
     }),
 
-  PAYFAST_MERCHANT_ID: z.string().optional(),
-  PAYFAST_MERCHANT_KEY: z.string().optional(),
+  PAYFAST_MERCHANT_ID: z.string().trim().optional(),
+  PAYFAST_MERCHANT_KEY: z.string().trim().optional(),
   /**
    * Required for signed calls in practice even though Payfast lists it as
    * optional — see the note on `PayfastConfig.passphrase`. Without it, every
    * signature this worker sends is simply wrong, and Payfast rejects it
    * looking like a credentials problem rather than a missing setting.
    */
-  PAYFAST_PASSPHRASE: z.string().optional(),
+  PAYFAST_PASSPHRASE: z.string().trim().optional(),
   /**
    * Overrides the adhoc-billing API host, for a sandbox account. Left as an
    * explicit URL rather than a PAYFAST_SANDBOX boolean deliberately: this
@@ -88,10 +89,10 @@ const schema = z.object({
    * hostname against, and guessing one would be worse than requiring it be
    * set from whatever Payfast's own account dashboard actually shows.
    */
-  PAYFAST_BASE_URL: z.string().url().optional(),
+  PAYFAST_BASE_URL: z.string().trim().url().optional(),
 
   /** §0.1 — see apps/api/src/config.ts for the reasoning. */
-  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  ALERT_WEBHOOK_URL: z.string().trim().url().optional(),
   ALERT_MIN_SEVERITY: z.enum(["routine", "warn", "page"]).default("warn"),
   RELEASE: z.string().optional(),
 });
