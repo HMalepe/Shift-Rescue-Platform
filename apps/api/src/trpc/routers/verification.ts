@@ -4,8 +4,10 @@ import { eq } from "drizzle-orm";
 import { documents, locumProfiles } from "@locum/db";
 import {
   createSignedUrl,
+  listPendingPharmacies,
   listPendingReview,
   reviewDocument,
+  reviewPharmacy,
   uploadDocument,
   verificationHistory,
   MAX_DOCUMENT_BYTES,
@@ -162,4 +164,30 @@ export const verificationRouter = router({
   history: adminProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => verificationHistory(ctx.db, input.userId)),
+
+  /**
+   * §2's pharmacy SAPC number, checked directly rather than through a
+   * document upload — see `packages/core/src/pharmacy-verification.ts` for
+   * why that is a deliberately smaller flow than the locum one.
+   */
+  queuePharmacies: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+    .query(async ({ ctx, input }) => listPendingPharmacies(ctx.db, input.limit)),
+
+  reviewPharmacy: adminProcedure
+    .input(
+      z.object({
+        pharmacyId: z.string().uuid(),
+        decision: z.enum(["verified", "rejected"]),
+        reason: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      reviewPharmacy(ctx.db, {
+        pharmacyId: input.pharmacyId,
+        adminId: ctx.user.id,
+        decision: input.decision,
+        ...(input.reason !== undefined && { reason: input.reason }),
+      }),
+    ),
 });

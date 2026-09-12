@@ -133,6 +133,23 @@ const schema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().trim().optional(),
 
   /**
+   * Phase 1 launches to locums paid directly by their own pharmacy/HR — the
+   * platform charges nobody and touches no money yet. `canPostShifts`
+   * (packages/core/src/billing/dunning.ts) blocks a pharmacy with no
+   * subscription row at all, which is *every* pharmacy in phase 1 — without
+   * this flag, no manager could ever post a shift. Off by default so a
+   * deploy that never sets it launches in the state phase 1 actually needs;
+   * flipping it on is phase 3's whole job, not a code change. Every Payfast
+   * integration stays wired and gated by `assertProductionReady` exactly as
+   * before — this flag only decides whether `shifts.create` enforces what it
+   * finds, not whether the billing code exists.
+   */
+  BILLING_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((v) => v === "true"),
+
+  /**
    * §2 — Payfast tokenization ("Subscribe"). All three required together; a
    * merchant id/key pair with no passphrase signs every request wrong rather
    * than failing loudly, so `assertProductionReady` treats a partial set the

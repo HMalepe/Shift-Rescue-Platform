@@ -117,8 +117,13 @@ export const shiftsRouter = router({
        * can (see `canPostShifts`'s comment); only `restricted` is blocked.
        * Without this check the entire dunning state machine is decorative:
        * `restricted` would restrict nothing a manager actually does.
+       *
+       * Phase 1 charges nobody, so `ctx.config.BILLING_ENABLED` is off and
+       * this whole check is skipped — `canPostShifts` returns false for any
+       * pharmacy with no subscription row, which in phase 1 is every
+       * pharmacy. See the flag's own comment in config.ts.
        */
-      if (!(await canPostShifts(ctx.db, input.pharmacyId))) {
+      if (ctx.config.BILLING_ENABLED && !(await canPostShifts(ctx.db, input.pharmacyId))) {
         throw new TRPCError({
           code: "FORBIDDEN",
           message:

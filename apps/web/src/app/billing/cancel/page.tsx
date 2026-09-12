@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/guard";
 import { Masthead } from "@/components/Masthead";
+import { BILLING_ENABLED } from "@/lib/billing";
 
 /** Where Payfast sends the browser back if the manager cancels checkout. */
 export default async function BillingCancelPage() {
+  if (!BILLING_ENABLED) redirect("/shifts");
+
   const viewer = await requireRole("manager");
 
   return (

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/guard";
 import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { BILLING_ENABLED } from "@/lib/billing";
 
 /**
  * Hands the browser off to Payfast's hosted checkout.
@@ -15,6 +16,8 @@ export default async function BillingCheckoutPage({
 }: {
   searchParams: Promise<{ url?: string; fields?: string }>;
 }) {
+  if (!BILLING_ENABLED) redirect("/shifts");
+
   await requireRole("manager");
   const { url, fields } = await searchParams;
 

@@ -17,6 +17,17 @@ interface PendingDocument {
   sapcNumber: string | null;
 }
 
+interface PendingPharmacy {
+  pharmacyId: string;
+  name: string;
+  tradingName: string | null;
+  city: string;
+  suburb: string | null;
+  sapcPharmacyNumber: string | null;
+  verification: string;
+  createdAt: string;
+}
+
 /**
  * §5/§12.1 — the document review queue.
  *
@@ -38,8 +49,9 @@ export default async function VerificationQueuePage({
   searchParams: Promise<{ error?: string; url?: string }>;
 }) {
   const viewer = await requireRole("admin");
-  const [pending, { error, url }] = await Promise.all([
+  const [pending, pendingPharmacies, { error, url }] = await Promise.all([
     api.query<PendingDocument[]>("verification.queue", { limit: 50 }),
+    api.query<PendingPharmacy[]>("verification.queuePharmacies", { limit: 50 }),
     searchParams,
   ]);
 
@@ -78,6 +90,35 @@ export default async function VerificationQueuePage({
     try {
       await api.mutate("verification.review", {
         documentId,
+        decision,
+        ...(reason !== "" && { reason }),
+      });
+    } catch (caught) {
+      const message =
+        caught instanceof ApiError ? caught.message : "Could not record the decision";
+      redirect(`/admin/verification?error=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath("/admin/verification");
+  }
+
+  async function reviewPharmacy(formData: FormData) {
+    "use server";
+    const pharmacyId = String(formData.get("pharmacyId") ?? "");
+    const decision = String(formData.get("decision") ?? "");
+    const reason = String(formData.get("reason") ?? "").trim();
+
+    if (decision === "rejected" && reason === "") {
+      redirect(
+        `/admin/verification?error=${encodeURIComponent(
+          "A rejection needs a reason — the manager has to know what to fix.",
+        )}`,
+      );
+    }
+
+    try {
+      await api.mutate("verification.reviewPharmacy", {
+        pharmacyId,
         decision,
         ...(reason !== "" && { reason }),
       });
@@ -156,6 +197,69 @@ export default async function VerificationQueuePage({
                       name="reason"
                       maxLength={500}
                       placeholder="Name does not match the SAPC register…"
+                    />
+                  </div>
+                  <div className="row" style={{ gap: "0.5rem" }}>
+                    <button
+                      type="submit"
+                      name="decision"
+                      value="verified"
+                      className="primary"
+                    >
+                      Verify
+                    </button>
+                    <button type="submit" name="decision" value="rejected">
+                      Reject
+                    </button>
+                  </div>
+                </form>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <h2 style={{ marginTop: "2.5rem" }}>Pharmacies</h2>
+        <p className="lede" style={{ marginBottom: "1rem" }}>
+          {pendingPharmacies.length === 0
+            ? "No pharmacy SAPC numbers waiting on a check."
+            : `${pendingPharmacies.length} pharmacy SAPC number${
+                pendingPharmacies.length === 1 ? "" : "s"
+              } waiting on a check.`}{" "}
+          Checked directly against the SAPC register — no document upload for this one.
+        </p>
+
+        {pendingPharmacies.length === 0 ? (
+          <p className="empty">Nothing waiting for review.</p>
+        ) : (
+          <div className="stack">
+            {pendingPharmacies.map((pharmacy) => (
+              <article key={pharmacy.pharmacyId} className="card">
+                <div className="row">
+                  <strong>{pharmacy.tradingName ?? pharmacy.name}</strong>
+                  <span className={badgeToneFor(pharmacy.verification)}>
+                    {pharmacy.verification}
+                  </span>
+                </div>
+                <p className="dim" style={{ margin: "0.3rem 0 0" }}>
+                  {pharmacy.suburb ? `${pharmacy.suburb}, ` : ""}
+                  {pharmacy.city}
+                </p>
+                <p style={{ margin: "0.4rem 0 0" }}>
+                  SAPC pharmacy number:{" "}
+                  <strong className="mono">{pharmacy.sapcPharmacyNumber ?? "—"}</strong>
+                </p>
+
+                <form action={reviewPharmacy} style={{ marginTop: "1rem" }}>
+                  <input type="hidden" name="pharmacyId" value={pharmacy.pharmacyId} />
+                  <div className="field">
+                    <label htmlFor={`pharmacy-reason-${pharmacy.pharmacyId}`}>
+                      Reason (required to reject)
+                    </label>
+                    <input
+                      id={`pharmacy-reason-${pharmacy.pharmacyId}`}
+                      name="reason"
+                      maxLength={500}
+                      placeholder="Number does not match the SAPC register…"
                     />
                   </div>
                   <div className="row" style={{ gap: "0.5rem" }}>

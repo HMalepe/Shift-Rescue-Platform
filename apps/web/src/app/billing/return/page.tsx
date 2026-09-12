@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/guard";
 import { Masthead } from "@/components/Masthead";
+import { BILLING_ENABLED } from "@/lib/billing";
 
 /**
  * Where Payfast sends the browser back after a successful checkout.
@@ -12,6 +14,8 @@ import { Masthead } from "@/components/Masthead";
  * whether billing is active yet.
  */
 export default async function BillingReturnPage() {
+  if (!BILLING_ENABLED) redirect("/shifts");
+
   const viewer = await requireRole("manager");
 
   return (

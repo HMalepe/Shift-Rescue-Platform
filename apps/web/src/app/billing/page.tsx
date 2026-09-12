@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { requireRole } from "@/lib/guard";
 import { Masthead } from "@/components/Masthead";
+import { BILLING_ENABLED } from "@/lib/billing";
 
 interface Pharmacy {
   id: string;
@@ -24,6 +25,8 @@ export default async function BillingPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  if (!BILLING_ENABLED) redirect("/shifts");
+
   const viewer = await requireRole("manager");
   const [pharmacies, { error }] = await Promise.all([
     api.query<Pharmacy[]>("profile.myPharmacies"),

@@ -274,6 +274,59 @@ describe("GATE product.verification — HTTP", () => {
     expect(doc.download.url).toMatch(/sig=/);
     expect(new Date(doc.download.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
+
+  it("lists a pending pharmacy's SAPC number and lets an MFA admin verify it directly", async () => {
+    const manager = await makeActor("manager");
+    const secret = generateTotpSecret();
+    const admin = await makeActor("admin", { mfaSecret: secret });
+
+    const [pharmacy] = await server.db
+      .insert(s.pharmacies)
+      .values({
+        name: `Pharmacy ${Date.now()}`,
+        addressLine: "1 Test Road",
+        city: "Johannesburg",
+        location: JHB,
+        sapcPharmacyNumber: "PH123456",
+      })
+      .returning({ id: s.pharmacies.id });
+    pharmacyIds.push(pharmacy!.id);
+    await server.db.insert(s.pharmacyMembers).values({
+      pharmacyId: pharmacy!.id,
+      userId: manager.id,
+      isPrimary: true,
+    });
+
+    // A non-admin cannot see it — same boundary as the locum document queue.
+    expect(
+      (await call("verification.queuePharmacies", {}, manager.accessToken, "GET")).statusCode,
+    ).toBe(403);
+
+    const queue = await call("verification.queuePharmacies", {}, admin.accessToken, "GET");
+    expect(queue.statusCode).toBe(200);
+    const row = queue.json().result.data.find((p: { pharmacyId: string }) => p.pharmacyId === pharmacy!.id);
+    expect(row.sapcPharmacyNumber).toBe("PH123456");
+    expect(row.verification).toBe("incomplete");
+
+    const review = await call(
+      "verification.reviewPharmacy",
+      { pharmacyId: pharmacy!.id, decision: "verified" },
+      admin.accessToken,
+    );
+    expect(review.statusCode).toBe(200);
+
+    const [after] = await server.db
+      .select({ verification: s.pharmacies.verification })
+      .from(s.pharmacies)
+      .where(eq(s.pharmacies.id, pharmacy!.id));
+    expect(after?.verification).toBe("verified");
+
+    // Verified pharmacies drop out of the queue.
+    const queueAfter = await call("verification.queuePharmacies", {}, admin.accessToken, "GET");
+    expect(
+      queueAfter.json().result.data.some((p: { pharmacyId: string }) => p.pharmacyId === pharmacy!.id),
+    ).toBe(false);
+  });
 });
 
 describe("GATE product.profile — self-service editing", () => {

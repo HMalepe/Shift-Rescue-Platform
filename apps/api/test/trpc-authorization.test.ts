@@ -311,6 +311,36 @@ describe("GATE security.authorization — tRPC", () => {
   });
 });
 
+describe("GATE product.billing_phase_1 — shift posting is not gated on a subscription", () => {
+  /*
+   * `canPostShifts` (packages/core/src/billing/dunning.ts) returns false for
+   * any pharmacy with no subscription row at all — which, before
+   * `BILLING_ENABLED` existed, was every pharmacy on day one. This test
+   * exists because that bug shipped once already: a fresh pharmacy could
+   * never post its first shift. The default config here has
+   * `BILLING_ENABLED` unset, i.e. false, exactly like a deploy that never
+   * sets it — this is what phase 1 actually runs.
+   */
+  it("lets a freshly registered, unsubscribed pharmacy post a shift", async () => {
+    const manager = await makeActor("manager");
+    const pharmacyId = await makePharmacy(manager.id);
+
+    const response = await call(
+      "shifts.create",
+      {
+        pharmacyId,
+        startsAt: new Date(Date.now() + 48 * 3_600_000).toISOString(),
+        endsAt: new Date(Date.now() + 56 * 3_600_000).toISOString(),
+        hourlyRateCents: 45_000,
+        visibility: "favourites_only",
+      },
+      manager.accessToken,
+    );
+
+    expect(response.statusCode).toBe(200);
+  });
+});
+
 describe("GATE security.authorization — §10.1 shift visibility", () => {
   it("hides a favourites-only shift from a locum who was not saved", async () => {
     const manager = await makeActor("manager");

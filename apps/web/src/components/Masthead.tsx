@@ -5,12 +5,15 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { signOutAction } from "@/lib/actions";
 import type { Role } from "@/lib/guard";
+import { BILLING_ENABLED } from "@/lib/billing";
 
 const NAV: Record<Role, ReadonlyArray<{ href: string; label: string }>> = {
   manager: [
     { href: "/shifts", label: "Shifts" },
     { href: "/shifts/new", label: "Post a shift" },
-    { href: "/billing", label: "Billing" },
+    // Phase 1 charges nobody — see lib/billing.ts. Nothing links to /billing
+    // at all until BILLING_ENABLED is on.
+    ...(BILLING_ENABLED ? [{ href: "/billing", label: "Billing" }] : []),
   ],
   locum: [
     { href: "/browse", label: "Find shifts" },
