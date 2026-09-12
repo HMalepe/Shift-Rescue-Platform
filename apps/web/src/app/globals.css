@@ -64,6 +64,9 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   background: var(--surface);
   margin-bottom: 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .masthead-inner {
   max-width: var(--max);
@@ -71,19 +74,58 @@ a:hover { text-decoration: underline; }
   padding: 0.85rem 1.25rem;
   display: flex;
   align-items: center;
-  gap: 1.25rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 .wordmark {
   font-weight: 650;
   letter-spacing: -0.015em;
   color: var(--text);
-  margin-right: auto;
 }
 .wordmark:hover { text-decoration: none; }
+
+/* The role badge sits right next to the wordmark: the same person may hold a
+   manager login in one tab and a locum login in another, and the dashboards
+   look similar enough at a glance that this is the fastest way to tell them
+   apart without reading a nav link. */
+.badge-role {
+  text-transform: none;
+  font-weight: 650;
+  border-color: transparent;
+  margin-right: auto;
+}
+.badge-role-manager { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.badge-role-locum { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.badge-role-admin { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+
+.nav-toggle {
+  display: none;
+  padding: 0.4rem;
+  border-color: transparent;
+}
+@media (max-width: 44rem) {
+  .nav-toggle { display: inline-flex; align-items: center; }
+}
+
 .navlinks { display: flex; gap: 1.1rem; align-items: center; flex-wrap: wrap; }
-.navlinks a { color: var(--text-dim); font-size: 0.9rem; }
+.navlinks a { color: var(--text-dim); font-size: 0.9rem; padding: 0.2rem 0; border-bottom: 2px solid transparent; }
 .navlinks a:hover { color: var(--text); text-decoration: none; }
+.navlinks a.active { color: var(--text); border-bottom-color: var(--accent); }
+
+@media (max-width: 44rem) {
+  .navlinks {
+    display: none;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
+    margin-top: 0.75rem;
+  }
+  .navlinks.nav-open { display: flex; }
+  .navlinks a.active { border-bottom-color: transparent; color: var(--accent); }
+}
 
 /* --- typography --------------------------------------------------------- */
 

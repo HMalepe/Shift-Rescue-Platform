@@ -73,7 +73,11 @@ export default async function BrowsePage({
       <Masthead role={viewer.role} />
       <main className="shell">
         <h1>Find shifts</h1>
-        <p className="lede">Open shifts you can take, nearest first.</p>
+        <p className="lede">
+          {shifts.length === 0
+            ? "Open shifts you can take, nearest first."
+            : `${shifts.length} open shift${shifts.length === 1 ? "" : "s"} near you, nearest first.`}
+        </p>
 
         {status.verification !== "verified" ? (
           <p className="alert alert-note">

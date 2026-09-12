@@ -36,6 +36,16 @@ export default async function ShiftsPage() {
           </Link>
         </div>
 
+        {shifts.length > 0 ? (
+          <p className="dim" style={{ marginTop: "-1rem", marginBottom: "1.75rem" }}>
+            {shifts.length} upcoming · {shifts.reduce((n, s) => n + s.applicants, 0)}{" "}
+            total applicants
+            {shifts.some((s) => s.applicants === 0) ? (
+              <> · <strong>{shifts.filter((s) => s.applicants === 0).length} with no applicants yet</strong></>
+            ) : null}
+          </p>
+        ) : null}
+
         {shifts.length === 0 ? (
           <p className="empty">
             No upcoming shifts. <Link href="/shifts/new">Post one</Link> and your saved
