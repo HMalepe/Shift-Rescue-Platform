@@ -178,18 +178,69 @@ export async function signIn(input: {
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-    };
-    const failure: { ok: false; message: string; domainCode?: string } = {
-      ok: false,
-      message: payload.error ?? "Could not sign in",
-    };
-    if (payload.code !== undefined) failure.domainCode = payload.code;
-    return failure;
+  if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+
+  await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
+  return { ok: true };
+}
+
+/**
+ * Every REST auth route (`/auth/login`, `/auth/register`) that fails sends
+ * one of two shapes: a domain error is `{ error: <code>, message: <human
+ * text> }` (`sendDomainError` in `apps/api/src/routes/auth.ts`), a request
+ * that never reached domain logic — failed `zod` validation, an unhandled
+ * exception — is just `{ error: <human text> }` with no `message` at all.
+ * `message` is only ever present on the first shape, so its presence is what
+ * tells the two apart; there is no third field name to check.
+ */
+async function parseAuthFailure(
+  response: Response,
+): Promise<{ message: string; domainCode?: string }> {
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    message?: string;
+  };
+  const result: { message: string; domainCode?: string } = {
+    message: payload.message ?? payload.error ?? "Something went wrong",
+  };
+  if (payload.message !== undefined && payload.error !== undefined) {
+    result.domainCode = payload.error;
   }
+  return result;
+}
+
+export type RegisterInput =
+  | {
+      role: "locum";
+      email: string;
+      password: string;
+      fullName: string;
+      sapcNumber: string;
+    }
+  | {
+      role: "manager";
+      email: string;
+      password: string;
+      fullName: string;
+      pharmacyName: string;
+      addressLine: string;
+      area: string;
+      sapcPharmacyNumber: string;
+    };
+
+/** Creates an account against the API's REST auth route and, on success,
+ *  stores the session exactly like `signIn` — registering signs you in. */
+export async function register(
+  input: RegisterInput,
+): Promise<{ ok: true } | { ok: false; message: string; domainCode?: string }> {
+  const response = await fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
 
   await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
   return { ok: true };

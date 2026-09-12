@@ -1,7 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
-import { authAttempts, sessions, users, type Database, type UserRole } from "@locum/db";
-import { DomainError } from "../errors";
+import {
+  authAttempts,
+  locumProfiles,
+  pharmacies,
+  pharmacyMembers,
+  sessions,
+  users,
+  type Database,
+  type UserRole,
+} from "@locum/db";
+import { DomainError, isUniqueViolation } from "../errors";
 import { getDummyHash, hashPassword, verifyPassword } from "./password";
 import {
   generateRefreshToken,
@@ -43,6 +52,125 @@ export interface TokenPair {
   readonly expiresIn: number;
   readonly userId: string;
   readonly role: UserRole;
+}
+
+interface RegisterCommon {
+  readonly email: string;
+  readonly password: string;
+  readonly fullName: string;
+}
+
+export interface RegisterLocumInput extends RegisterCommon {
+  readonly role: "locum";
+  /** SAPC registration number — captured at signup, checked by an admin
+   *  before the account can be booked (§5). */
+  readonly sapcNumber: string;
+}
+
+export interface RegisterManagerInput extends RegisterCommon {
+  readonly role: "manager";
+  readonly pharmacy: {
+    readonly name: string;
+    readonly addressLine: string;
+    readonly suburb?: string;
+    readonly city: string;
+    readonly province?: string;
+    readonly postalCode?: string;
+    /** SAPC pharmacy registration number — "the thing a manager is really
+     *  buying trust in", same reasoning as the locum's own number. */
+    readonly sapcPharmacyNumber: string;
+    readonly location: { readonly lng: number; readonly lat: number };
+  };
+}
+
+export type RegisterInput = RegisterLocumInput | RegisterManagerInput;
+
+/**
+ * Self-service signup.
+ *
+ * There was previously no way to create an account except a Railway-console
+ * script an admin runs by hand — fine for bootstrapping the first account,
+ * unworkable as the only path for every locum and pharmacy that wants to
+ * join. Both roles land unverified: a locum's `locumProfiles.verification`
+ * starts `"incomplete"` exactly as it does when an admin provisions one by
+ * hand, and a fresh pharmacy's `verification` does too. Nothing here marks
+ * either "verified" — only `verification.review` (locum) or a future
+ * equivalent admin action (pharmacy) does that, same as every other path.
+ *
+ * Runs as one transaction: a user row with no locum profile / pharmacy
+ * membership behind it would be a real account that cannot use the product,
+ * which is a worse failure mode than the signup simply not completing.
+ */
+export async function register(
+  db: Database,
+  input: RegisterInput,
+): Promise<{ readonly userId: string }> {
+  const email = input.email.trim().toLowerCase();
+
+  return db.transaction(async (tx) => {
+    const passwordHash = await hashPassword(input.password);
+
+    let userId: string;
+    try {
+      const [created] = await tx
+        .insert(users)
+        .values({
+          id: randomUUID(),
+          role: input.role,
+          email,
+          fullName: input.fullName,
+          passwordHash,
+        })
+        .returning({ id: users.id });
+      userId = created!.id;
+    } catch (error) {
+      if (isUniqueViolation(error, "users_email_lower_key")) {
+        throw new DomainError("EMAIL_TAKEN", "An account with this email already exists");
+      }
+      throw error;
+    }
+
+    if (input.role === "locum") {
+      try {
+        await tx.insert(locumProfiles).values({
+          userId,
+          sapcNumber: input.sapcNumber,
+        });
+      } catch (error) {
+        if (isUniqueViolation(error, "locum_profiles_sapc_key")) {
+          throw new DomainError(
+            "SAPC_NUMBER_TAKEN",
+            "This SAPC registration number is already on file for another account",
+          );
+        }
+        throw error;
+      }
+    } else {
+      const [pharmacy] = await tx
+        .insert(pharmacies)
+        .values({
+          name: input.pharmacy.name,
+          addressLine: input.pharmacy.addressLine,
+          ...(input.pharmacy.suburb !== undefined && { suburb: input.pharmacy.suburb }),
+          city: input.pharmacy.city,
+          ...(input.pharmacy.province !== undefined && { province: input.pharmacy.province }),
+          ...(input.pharmacy.postalCode !== undefined && {
+            postalCode: input.pharmacy.postalCode,
+          }),
+          sapcPharmacyNumber: input.pharmacy.sapcPharmacyNumber,
+          location: input.pharmacy.location,
+        })
+        .returning({ id: pharmacies.id });
+
+      await tx.insert(pharmacyMembers).values({
+        pharmacyId: pharmacy!.id,
+        userId,
+        isPrimary: true,
+      });
+    }
+
+    return { userId };
+  });
 }
 
 /**

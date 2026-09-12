@@ -25,6 +25,8 @@ export type DomainErrorCode =
   | "INVALID_REFRESH_TOKEN"
   | "REFRESH_TOKEN_REUSED"
   | "SESSION_INVALIDATED"
+  | "EMAIL_TAKEN"
+  | "SAPC_NUMBER_TAKEN"
   // §8 attendance
   | "NOT_BOOKING_OWNER"
   | "BOOKING_NOT_CONFIRMED"

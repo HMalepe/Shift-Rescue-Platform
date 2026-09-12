@@ -10,6 +10,7 @@ import {
   logout,
   needsRehash,
   refresh,
+  register,
   signAccessToken,
   verifyAccessToken,
   verifyTotp,
@@ -38,6 +39,15 @@ const config: AuthConfig = {
 };
 
 const createdUserIds: string[] = [];
+/**
+ * `register()`'s manager path creates a pharmacy row with no FK back to the
+ * user, so deleting the user (which cascades `pharmacyMembers` via its own
+ * FK) leaves the pharmacy orphaned rather than cleaned up. Tracked and
+ * deleted separately below.
+ */
+const createdPharmacyIds: string[] = [];
+const JOHANNESBURG = { lng: 28.0473, lat: -26.2041 } as const;
+const unique = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 async function createUser(options: {
   role: "manager" | "locum" | "admin";
@@ -67,6 +77,10 @@ afterEach(async () => {
   if (ids.length > 0) {
     await db.delete(s.sessions).where(inArray(s.sessions.userId, ids));
     await db.delete(s.users).where(inArray(s.users.id, ids));
+  }
+  const pharmacyIds = createdPharmacyIds.splice(0);
+  if (pharmacyIds.length > 0) {
+    await db.delete(s.pharmacies).where(inArray(s.pharmacies.id, pharmacyIds));
   }
   await db.delete(s.authAttempts).where(eq(s.authAttempts.outcome, "seed-cleanup"));
 });
@@ -435,5 +449,120 @@ describe("GATE security.auth — refresh rotation and reuse detection", () => {
     await expect(refresh(db, config, tokens.refreshToken)).rejects.toMatchObject({
       code: "ACCOUNT_DISABLED",
     });
+  });
+});
+
+describe("GATE security.auth — self-service registration", () => {
+  it("creates an unverified locum account that can immediately log in", async () => {
+    const email = `register-locum-${unique()}@test.invalid`;
+    const result = await register(db, {
+      role: "locum",
+      email,
+      password: "correct horse battery staple",
+      fullName: "New Locum",
+      sapcNumber: `P${unique()}`,
+    });
+    createdUserIds.push(result.userId);
+
+    const [profile] = await db
+      .select({ verification: s.locumProfiles.verification })
+      .from(s.locumProfiles)
+      .where(eq(s.locumProfiles.userId, result.userId));
+    // Same starting state as an admin-provisioned account — registration is
+    // not a shortcut around §5's human-checks-the-SAPC-certificate rule.
+    expect(profile?.verification).toBe("incomplete");
+
+    const tokens = await login(db, config, { email, password: "correct horse battery staple" });
+    expect(tokens.userId).toBe(result.userId);
+    expect(tokens.role).toBe("locum");
+  });
+
+  it("creates an unverified pharmacy the manager is the primary member of", async () => {
+    const email = `register-manager-${unique()}@test.invalid`;
+    const result = await register(db, {
+      role: "manager",
+      email,
+      password: "correct horse battery staple",
+      fullName: "New Manager",
+      pharmacy: {
+        name: "Test Pharmacy",
+        addressLine: "1 Test Street",
+        city: "Johannesburg",
+        sapcPharmacyNumber: `PH${unique()}`,
+        location: JOHANNESBURG,
+      },
+    });
+    createdUserIds.push(result.userId);
+
+    const [membership] = await db
+      .select()
+      .from(s.pharmacyMembers)
+      .where(eq(s.pharmacyMembers.userId, result.userId));
+    expect(membership?.isPrimary).toBe(true);
+    createdPharmacyIds.push(membership!.pharmacyId);
+
+    const [pharmacy] = await db
+      .select({ verification: s.pharmacies.verification, sapc: s.pharmacies.sapcPharmacyNumber })
+      .from(s.pharmacies)
+      .where(eq(s.pharmacies.id, membership!.pharmacyId));
+    expect(pharmacy?.verification).toBe("incomplete");
+    expect(pharmacy?.sapc).toBeTruthy();
+
+    const tokens = await login(db, config, { email, password: "correct horse battery staple" });
+    expect(tokens.role).toBe("manager");
+  });
+
+  it("rejects a duplicate email without creating a second account", async () => {
+    const email = `register-dup-${unique()}@test.invalid`;
+    const first = await register(db, {
+      role: "locum",
+      email,
+      password: "correct horse battery staple",
+      fullName: "First",
+      sapcNumber: `P${unique()}`,
+    });
+    createdUserIds.push(first.userId);
+
+    await expect(
+      register(db, {
+        role: "locum",
+        email,
+        password: "a different password!",
+        fullName: "Second",
+        sapcNumber: `P${unique()}`,
+      }),
+    ).rejects.toMatchObject({ code: "EMAIL_TAKEN" });
+
+    const rows = await db.select().from(s.users).where(eq(s.users.email, email.toLowerCase()));
+    expect(rows).toHaveLength(1);
+  });
+
+  it("rejects a duplicate SAPC number, leaving neither the user row behind", async () => {
+    const sapcNumber = `P${unique()}`;
+    const first = await register(db, {
+      role: "locum",
+      email: `register-sapc1-${unique()}@test.invalid`,
+      password: "correct horse battery staple",
+      fullName: "First",
+      sapcNumber,
+    });
+    createdUserIds.push(first.userId);
+
+    const secondEmail = `register-sapc2-${unique()}@test.invalid`;
+    await expect(
+      register(db, {
+        role: "locum",
+        email: secondEmail,
+        password: "correct horse battery staple",
+        fullName: "Second",
+        sapcNumber,
+      }),
+    ).rejects.toMatchObject({ code: "SAPC_NUMBER_TAKEN" });
+
+    // The transaction must have rolled back the user insert too — a bare
+    // account with no profile behind it would be a real login that can never
+    // pass verification.
+    const rows = await db.select().from(s.users).where(eq(s.users.email, secondEmail));
+    expect(rows).toHaveLength(0);
   });
 });

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { signIn } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
@@ -90,6 +91,10 @@ export default async function LoginPage({
           Sign in
         </button>
       </form>
+
+      <p className="hint" style={{ marginTop: "1rem" }}>
+        New here? <Link href="/register">Create an account</Link>.
+      </p>
     </main>
   );
 }
