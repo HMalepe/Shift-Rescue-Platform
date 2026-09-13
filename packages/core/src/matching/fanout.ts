@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { pharmacies, shiftOffers, shifts, type Database } from "@locum/db";
 import { sendWhatsAppMessage, type SendDeps } from "../messaging/send";
+import { formatShiftStart } from "../messaging/templates";
 import {
   LAST_RING,
   MAX_TOTAL_PER_SHIFT,
@@ -150,7 +151,7 @@ export async function fanOutRing(
       variables: [
         shift.pharmacyName,
         shift.pharmacySuburb ?? "",
-        shift.startsAt.toISOString(),
+        formatShiftStart(shift.startsAt),
         String(candidate.distanceKm),
       ],
     });

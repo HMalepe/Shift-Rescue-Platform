@@ -147,6 +147,29 @@ export const TEMPLATES: Readonly<Record<MessageType, TemplateSpec>> = {
   },
 };
 
+/**
+ * How a shift's start time reads inside a template variable.
+ *
+ * `Date.toISOString()` ("2026-09-20T08:00:00.000Z") is what a locum would see
+ * without this — technically correct, and not what §11's whole point is
+ * about: a message a real person on a phone can act on immediately. Fixed to
+ * `Africa/Johannesburg` for the same reason `apps/web/src/lib/format.ts`
+ * pins its own date formatting there — the server's runtime locale/timezone
+ * is not necessarily South Africa's, and this is a product whose entire job
+ * is telling a pharmacist when to arrive.
+ */
+export function formatShiftStart(date: Date): string {
+  return date.toLocaleString("en-ZA", {
+    timeZone: "Africa/Johannesburg",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export function templateFor(type: MessageType): TemplateSpec {
   const spec = TEMPLATES[type];
   if (!spec) {

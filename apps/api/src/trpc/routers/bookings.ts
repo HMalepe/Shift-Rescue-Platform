@@ -1,12 +1,14 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
-import { bookings, locumProfiles, pharmacyMembers, shifts, users } from "@locum/db";
+import { bookings, locumProfiles, pharmacies, pharmacyMembers, shifts, users } from "@locum/db";
 import {
   QUOTAS,
   cancelBooking,
   confirmBooking,
+  formatShiftStart,
   isUniqueViolation,
+  sendWhatsAppMessage,
   withIdempotency,
 } from "@locum/core";
 import {
@@ -136,6 +138,34 @@ export const bookingsRouter = router({
         bookingId: input.bookingId,
         actorId: ctx.user.id,
       });
+
+      /*
+       * §11.2 — tells the locum they got the shift. `sendWhatsAppMessage`
+       * never throws (every failure mode — no consent, quiet hours, a
+       * rejected send — resolves to a SendOutcome and is logged to
+       * whatsapp_message_log), so this cannot turn a successful confirmation
+       * into a failed request; the booking is the transaction that matters,
+       * the message is best-effort on top of it.
+       */
+      const [details] = await ctx.db
+        .select({ pharmacyName: pharmacies.name, startsAt: shifts.startsAt })
+        .from(shifts)
+        .innerJoin(pharmacies, eq(pharmacies.id, shifts.pharmacyId))
+        .where(eq(shifts.id, result.shiftId))
+        .limit(1);
+
+      if (details) {
+        await sendWhatsAppMessage(
+          ctx.db,
+          { sender: ctx.whatsappSender },
+          {
+            type: "booking_confirmed",
+            userId: result.locumId,
+            variables: [details.pharmacyName, formatShiftStart(details.startsAt)],
+          },
+        );
+      }
+
       return result;
     }),
 
