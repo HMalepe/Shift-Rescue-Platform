@@ -6,6 +6,7 @@
   },
   "deploy": {
     "startCommand": "pnpm --filter @locum/api start",
+    "preDeployCommand": "pnpm --filter @locum/db migrate",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",

@@ -116,7 +116,7 @@ ALERT_WEBHOOK_URL=<your alert sink>
 
 TWILIO_ACCOUNT_SID=<from your Twilio account>
 TWILIO_AUTH_TOKEN=<from your Twilio account>
-TWILIO_FROM_NUMBER=<your approved WhatsApp sender>
+TWILIO_WHATSAPP_FROM=<your approved WhatsApp sender>
 TWILIO_CONTENT_SIDS={"shift_offer_v1":"HX...", "booking_confirmed_v1":"HX...", ...}
 
 PAYFAST_MERCHANT_KEY=<from your Payfast account>
@@ -164,7 +164,22 @@ the next piece of work, not something this guide has solved. Until then, run
 
 ## After all five services exist
 
-1. **Run migrations once**, from your machine with the Railway CLI:
+1. **Migrations now run automatically before every `api` deploy.**
+   `railway.json`'s `deploy.preDeployCommand` runs
+   `pnpm --filter @locum/db migrate` before Railway starts the new
+   container — the gap this used to leave (a deploy of code expecting a new
+   column landing against an un-migrated database, because nobody remembered
+   to run the manual command first) is closed. `packages/db/src/migrate.ts`
+   is safe to run this way: it connects with `max: 1` and takes Drizzle's
+   advisory lock, so two overlapping pre-deploy runs (a redeploy fired while
+   the previous one is still migrating) serialise instead of racing.
+   Deliberately only on `railway.json`, not `railway.worker.json` — the
+   worker must not also try to run migrations on its own deploys and race the
+   API's.
+
+   The manual command still exists for one-off use (seeding a brand-new
+   service, or migrating from your own machine to poke at the database
+   directly):
    ```sh
    railway link              # select this project
    railway run --service api pnpm --filter @locum/db migrate

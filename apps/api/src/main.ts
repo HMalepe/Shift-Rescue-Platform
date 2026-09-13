@@ -71,11 +71,11 @@ const documentScanner = config.CLAMD_HOST
  * window while looking successful from here.
  */
 const whatsappSender =
-  config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN && config.TWILIO_FROM_NUMBER
+  config.TWILIO_ACCOUNT_SID && config.TWILIO_AUTH_TOKEN && config.TWILIO_WHATSAPP_FROM
     ? new TwilioWhatsAppSender({
         accountSid: config.TWILIO_ACCOUNT_SID,
         authToken: config.TWILIO_AUTH_TOKEN,
-        fromNumber: config.TWILIO_FROM_NUMBER,
+        fromNumber: config.TWILIO_WHATSAPP_FROM,
         statusCallbackUrl: `${config.PUBLIC_BASE_URL}/webhooks/twilio/status`,
         contentSids: config.TWILIO_CONTENT_SIDS,
       })

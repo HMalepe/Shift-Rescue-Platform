@@ -80,6 +80,20 @@ const schema = z.object({
    * silently downgrade to a free-form send.
    */
   TWILIO_ACCOUNT_SID: z.string().trim().optional(),
+  /**
+   * The sender number. `TWILIO_WHATSAPP_FROM` is canonical — it is what
+   * apps/worker's config has always called this same value.
+   * `TWILIO_FROM_NUMBER` is accepted too, purely as a legacy alias: on
+   * Railway, variables are copied to each service by hand rather than
+   * shared, and this codebase used to require the *other* name on api than
+   * on worker for the identical setting. That is a footgun with no upside —
+   * setting the sender under one name on one service and it silently being
+   * unset on the other — so both names resolve to the same field below (see
+   * the object-level `.transform`) and nothing past this file reads either
+   * raw env var.
+   */
+  TWILIO_WHATSAPP_FROM: z.string().trim().optional(),
+  /** @deprecated legacy alias for `TWILIO_WHATSAPP_FROM` — see its comment. */
   TWILIO_FROM_NUMBER: z.string().trim().optional(),
   TWILIO_CONTENT_SIDS: z
     .string()
@@ -177,7 +191,18 @@ const schema = z.object({
    * anyone has actually made.
    */
   SUBSCRIPTION_MONTHLY_CENTS: z.coerce.number().int().positive().default(89_900),
-});
+})
+  /*
+   * Resolves the TWILIO_WHATSAPP_FROM / TWILIO_FROM_NUMBER alias once, here,
+   * rather than at every call site. `TWILIO_FROM_NUMBER` is dropped from the
+   * parsed result entirely — see the field comment above — so there is only
+   * ever one name to read from `Config`, and a caller cannot accidentally
+   * read the stale legacy field instead of the resolved one.
+   */
+  .transform(({ TWILIO_FROM_NUMBER, ...rest }) => ({
+    ...rest,
+    TWILIO_WHATSAPP_FROM: rest.TWILIO_WHATSAPP_FROM ?? TWILIO_FROM_NUMBER,
+  }));
 
 export type Config = z.infer<typeof schema>;
 

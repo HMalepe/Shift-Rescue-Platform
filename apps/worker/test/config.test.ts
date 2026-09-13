@@ -76,3 +76,42 @@ describe("GATE worker.production_readiness", () => {
     ).not.toThrow();
   });
 });
+
+describe("GATE worker.config — TWILIO_WHATSAPP_FROM / TWILIO_FROM_NUMBER alias", () => {
+  /*
+   * apps/api used to require TWILIO_FROM_NUMBER for this exact value while
+   * this config required TWILIO_WHATSAPP_FROM — a real footgun on Railway,
+   * where variables are copied to each service by hand. Both names now
+   * resolve to the same field on both services.
+   */
+  it("reads the canonical name directly", () => {
+    expect(config({ TWILIO_WHATSAPP_FROM: "whatsapp:+27000000001" }).TWILIO_WHATSAPP_FROM).toBe(
+      "whatsapp:+27000000001",
+    );
+  });
+
+  it("falls back to the legacy TWILIO_FROM_NUMBER name when canonical is unset", () => {
+    expect(config({ TWILIO_FROM_NUMBER: "whatsapp:+27000000002" }).TWILIO_WHATSAPP_FROM).toBe(
+      "whatsapp:+27000000002",
+    );
+  });
+
+  it("prefers the canonical name when both are set", () => {
+    expect(
+      config({
+        TWILIO_WHATSAPP_FROM: "whatsapp:+27000000001",
+        TWILIO_FROM_NUMBER: "whatsapp:+27000000002",
+      }).TWILIO_WHATSAPP_FROM,
+    ).toBe("whatsapp:+27000000001");
+  });
+
+  it("does not leak the legacy field name into the parsed config", () => {
+    expect(
+      "TWILIO_FROM_NUMBER" in config({ TWILIO_FROM_NUMBER: "whatsapp:+27000000002" }),
+    ).toBe(false);
+  });
+
+  it("is undefined when neither name is set", () => {
+    expect(config({}).TWILIO_WHATSAPP_FROM).toBeUndefined();
+  });
+});

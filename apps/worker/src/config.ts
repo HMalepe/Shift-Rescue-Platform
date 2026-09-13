@@ -50,7 +50,18 @@ const schema = z.object({
 
   TWILIO_ACCOUNT_SID: z.string().trim().optional(),
   TWILIO_AUTH_TOKEN: z.string().trim().optional(),
+  /**
+   * The sender number. Canonical here already — this config has always used
+   * this name — but `TWILIO_FROM_NUMBER` (what apps/api's config used to
+   * require for the identical value) is accepted too, purely as a legacy
+   * alias: on Railway, variables are copied to each service by hand rather
+   * than shared, and requiring different names on the two services for one
+   * setting was a footgun with no upside. See apps/api/src/config.ts's
+   * matching comment.
+   */
   TWILIO_WHATSAPP_FROM: z.string().trim().optional(),
+  /** @deprecated legacy alias for `TWILIO_WHATSAPP_FROM` — see its comment. */
+  TWILIO_FROM_NUMBER: z.string().trim().optional(),
   /** §11.5 — where delivery receipts are posted back. */
   TWILIO_STATUS_CALLBACK_URL: z.string().trim().url().optional(),
   /**
@@ -95,7 +106,17 @@ const schema = z.object({
   ALERT_WEBHOOK_URL: z.string().trim().url().optional(),
   ALERT_MIN_SEVERITY: z.enum(["routine", "warn", "page"]).default("warn"),
   RELEASE: z.string().optional(),
-});
+})
+  /*
+   * Resolves the TWILIO_WHATSAPP_FROM / TWILIO_FROM_NUMBER alias once, here —
+   * see apps/api/src/config.ts's matching transform for the full reasoning.
+   * TWILIO_FROM_NUMBER is dropped from the parsed result; only the canonical
+   * field exists past this point.
+   */
+  .transform(({ TWILIO_FROM_NUMBER, ...rest }) => ({
+    ...rest,
+    TWILIO_WHATSAPP_FROM: rest.TWILIO_WHATSAPP_FROM ?? TWILIO_FROM_NUMBER,
+  }));
 
 export type WorkerConfig = z.infer<typeof schema>;
 
