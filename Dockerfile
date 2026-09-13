@@ -10,10 +10,15 @@
 # ## Node 22 and ARM64
 #
 # Node 22 matches `engines` in package.json and the version CI runs. ARM64
-# matches the `runtime_platform` in both ECS task definitions; building this on
-# an x86 machine needs `docker buildx build --platform linux/arm64`, and a
-# mismatch fails at task start with an exec format error rather than at build
-# time.
+# matches the `runtime_platform` in both ECS task definitions (infra/) —
+# building for that path on an x86 machine needs
+# `docker buildx build --platform linux/arm64`, and a mismatch fails at task
+# start with an exec format error rather than at build time.
+#
+# This only applies to the ECS/infra path. The Railway MVP path
+# (docs/RAILWAY.md) has no `runtime_platform` to match — Railway builds this
+# same Dockerfile natively for its own runtime, so no `--platform` override is
+# needed or wanted there.
 #
 # ## Why this ships TypeScript rather than compiled JavaScript
 #
