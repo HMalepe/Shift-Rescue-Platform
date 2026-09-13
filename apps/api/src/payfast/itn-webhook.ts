@@ -72,6 +72,18 @@ export function registerPayfastItnWebhook(
       return reply.code(400).send({ error: "not confirmed by payfast" });
     }
 
+    /*
+     * §15: the one thing the sandbox can answer that reading Payfast's docs
+     * cannot — what field list a real `subscription_type=2` ITN actually
+     * posts. Keys only, never values: this fires on every genuine (signed
+     * AND postback-confirmed) ITN, so the values are live payment data, not
+     * a log line's business.
+     */
+    request.log.info(
+      { fields: Object.keys(params), env: config.ENVIRONMENT },
+      "payfast ITN accepted",
+    );
+
     const subscriptionId = params["custom_str1"];
     const paymentStatus = params["payment_status"];
     const pfPaymentId = params["pf_payment_id"];
@@ -80,6 +92,12 @@ export function registerPayfastItnWebhook(
     // `token`, others fold it into `pf_payment_id`. Both are accepted; this
     // is exactly the kind of detail that needs confirming against a live
     // sandbox delivery (see the file comment).
+    if (params["token"] === undefined && pfPaymentId === undefined) {
+      request.log.warn(
+        { env: config.ENVIRONMENT },
+        "Payfast ITN has neither token nor pf_payment_id — the billing token is ambiguous",
+      );
+    }
     const mandateToken = params["token"] ?? pfPaymentId;
     const amountGross = params["amount_gross"];
 

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PassThrough } from "node:stream";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import * as s from "@locum/db/schema";
@@ -48,8 +49,8 @@ function itnBody(fields: Record<string, string>): string {
 let server: BuiltServer;
 const pharmacyIds: string[] = [];
 
-async function makeSubscription() {
-  const [pharmacy] = await server.db
+async function makeSubscription(target: BuiltServer = server) {
+  const [pharmacy] = await target.db
     .insert(s.pharmacies)
     .values({
       name: `ITN Pharmacy ${Date.now()}${Math.random()}`,
@@ -60,7 +61,7 @@ async function makeSubscription() {
     .returning({ id: s.pharmacies.id });
   pharmacyIds.push(pharmacy!.id);
 
-  const [subscription] = await server.db
+  const [subscription] = await target.db
     .insert(s.subscriptions)
     .values({
       pharmacyId: pharmacy!.id,
@@ -240,5 +241,151 @@ describe("GATE billing.subscribe — ITN activation", () => {
       .from(s.subscriptions)
       .where(eq(s.subscriptions.id, subscriptionId));
     expect(row?.status).toBe("trialing");
+  });
+});
+
+/**
+ * GATE: observability.payfast_itn_fields
+ *
+ * §15: G -> X's other half. The signature/postback tests above prove the
+ * fail-closed gates; these prove the diagnostic added specifically to answer
+ * "what does a real ITN's field list actually look like" logs keys and never
+ * the payment data those keys hold, and that the ambiguous-billing-token case
+ * the file comment flags gets its own warning.
+ *
+ * The shared `server` above is built with `logger: false` (§ the comment on
+ * `ServerDeps.logStream`) — every other suite in this file would be pure
+ * noise if it logged to stdout on every request. These tests build their own
+ * server with a capturing stream instead of touching that default.
+ */
+describe("GATE observability.payfast_itn_fields — accepted-ITN field-shape log", () => {
+  async function serverWithCapturedLogs(): Promise<{
+    logServer: BuiltServer;
+    lines: () => Array<Record<string, unknown>>;
+    close: () => Promise<void>;
+  }> {
+    const chunks: string[] = [];
+    const logStream = new PassThrough();
+    logStream.on("data", (chunk: Buffer) => chunks.push(chunk.toString("utf8")));
+
+    const logServer = await buildServer(
+      loadConfig({
+        ...process.env,
+        NODE_ENV: "test",
+        ENVIRONMENT: "test-itn-logging",
+        PAYFAST_MERCHANT_ID: "10000100",
+        PAYFAST_MERCHANT_KEY: "46f0cd694581a",
+        PAYFAST_PASSPHRASE: PASSPHRASE,
+        AUTH_SECRET: "test-auth-secret-at-least-32-characters-long",
+        DATABASE_URL:
+          process.env["DATABASE_URL"] ??
+          "postgresql://locum:locum_local_dev@localhost:5432/locum_planner_dev",
+      }),
+      {
+        payfastFetchImpl: (async () => new Response("VALID")) as unknown as typeof fetch,
+        logStream,
+      },
+    );
+    await logServer.app.ready();
+
+    return {
+      logServer,
+      // Pino writes newline-delimited JSON; each captured chunk may hold
+      // more than one line, or a partial one, so join everything before
+      // splitting rather than parsing chunk-by-chunk.
+      lines: () =>
+        chunks
+          .join("")
+          .split("\n")
+          .filter((line) => line.trim() !== "")
+          .map((line) => JSON.parse(line) as Record<string, unknown>),
+      close: async () => {
+        await logServer.app.close();
+        await logServer.client.end();
+      },
+    };
+  }
+
+  it("logs only the field keys, never their values, for an accepted ITN", async () => {
+    const { logServer, lines, close } = await serverWithCapturedLogs();
+    try {
+      const subscriptionId = await makeSubscription(logServer);
+      const mandateToken = "pf_mandate_should_never_appear_in_logs";
+      const payload = itnBody({
+        m_payment_id: `sub_init_${subscriptionId}`,
+        pf_payment_id: `pf_${Date.now()}`,
+        payment_status: "COMPLETE",
+        amount_gross: "899.00",
+        custom_str1: subscriptionId,
+        token: mandateToken,
+      });
+
+      const response = await logServer.app.inject({
+        method: "POST",
+        url: WEBHOOK_PATH,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload,
+      });
+      expect(response.statusCode).toBe(200);
+
+      const accepted = lines().find((l) => l["msg"] === "payfast ITN accepted");
+      expect(accepted).toBeDefined();
+      expect(accepted?.["env"]).toBe("test-itn-logging");
+      expect(accepted?.["fields"]).toEqual(
+        expect.arrayContaining([
+          "m_payment_id",
+          "pf_payment_id",
+          "payment_status",
+          "amount_gross",
+          "custom_str1",
+          "token",
+          "signature",
+        ]),
+      );
+
+      // The line logs the field NAME "token", never the mandate token's own
+      // value — nor the subscription id or any other posted value.
+      const rawAcceptedLine = JSON.stringify(accepted);
+      expect(rawAcceptedLine).not.toContain(mandateToken);
+      expect(rawAcceptedLine).not.toContain(subscriptionId);
+    } finally {
+      await close();
+    }
+  });
+
+  it("warns when an accepted ITN has neither token nor pf_payment_id", async () => {
+    const { logServer, lines, close } = await serverWithCapturedLogs();
+    try {
+      const subscriptionId = await makeSubscription(logServer);
+      // Deliberately omits both `token` and `pf_payment_id` — the exact
+      // ambiguous case the file comment on `mandateToken` describes.
+      const payload = itnBody({
+        m_payment_id: `sub_init_${subscriptionId}`,
+        payment_status: "COMPLETE",
+        amount_gross: "899.00",
+        custom_str1: subscriptionId,
+      });
+
+      const response = await logServer.app.inject({
+        method: "POST",
+        url: WEBHOOK_PATH,
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload,
+      });
+      // pf_payment_id is also required for the idempotency key, so this
+      // still 400s on the pre-existing "missing required fields" check —
+      // the point of this test is that the NEW, more specific warning fired
+      // first, not that the request succeeds.
+      expect(response.statusCode).toBe(400);
+
+      const warning = lines().find(
+        (l) =>
+          l["msg"] === "Payfast ITN has neither token nor pf_payment_id — the billing token is ambiguous",
+      );
+      expect(warning).toBeDefined();
+      expect(warning?.["env"]).toBe("test-itn-logging");
+    } finally {
+      await close();
+    }
   });
 });

@@ -53,6 +53,15 @@ export interface ServerDeps {
   readonly reporter?: ErrorReporter;
   /** Overridable so tests can stub Payfast's postback-validate call. */
   readonly payfastFetchImpl?: typeof fetch;
+  /**
+   * Overridable so tests can assert on log content. The logger is disabled
+   * entirely in `NODE_ENV=test` (a booted-per-test-file server writing pino
+   * output to stdout on every request run is noise, not signal) — passing a
+   * stream here opts a specific test suite back into real logging, routed at
+   * this destination instead of stdout, without changing that default for
+   * every other suite.
+   */
+  readonly logStream?: NodeJS.WritableStream;
 }
 
 export async function buildServer(
@@ -70,7 +79,11 @@ export async function buildServer(
   });
 
   const app = Fastify({
-    logger: config.NODE_ENV === "test" ? false : { level: "info" },
+    logger: deps.logStream
+      ? { level: "info", stream: deps.logStream }
+      : config.NODE_ENV === "test"
+        ? false
+        : { level: "info" },
     // Trust the proxy so rate limiting keys on the real client IP rather than
     // the load balancer's — otherwise every request shares one bucket and the
     // §12.1 limit protects nothing.
