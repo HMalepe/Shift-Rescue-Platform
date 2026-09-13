@@ -104,8 +104,13 @@ const { app, client } = await buildServer(config, {
  * transaction leaves the manager with no answer about whether their pharmacy
  * has cover tomorrow.
  */
+// A second signal during an in-flight drain must not call app.close() twice —
+// that risks an unhandled rejection mid booking-confirmation drain.
+let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     app.log.info({ signal }, "shutting down");
     void app
       .close()
