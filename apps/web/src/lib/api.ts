@@ -259,6 +259,51 @@ export async function register(
   return { ok: true };
 }
 
+export async function fetchSetupStatus(): Promise<{ available: boolean }> {
+  try {
+    const response = await fetch(`${API_URL}/auth/setup-status`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return { available: false };
+    const body = (await response.json()) as { available?: boolean };
+    return { available: body.available === true };
+  } catch {
+    return { available: false };
+  }
+}
+
+export async function bootstrapAdminAccount(input: {
+  bootstrapSecret: string;
+  email: string;
+  password: string;
+  fullName: string;
+}): Promise<
+  | { ok: true; email: string; mfaSecret: string; otpauthUrl: string }
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await fetch(`${API_URL}/auth/bootstrap-admin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+
+    const body = (await response.json()) as {
+      email: string;
+      mfaSecret: string;
+      otpauthUrl: string;
+    };
+    return { ok: true, ...body };
+  } catch {
+    return { ok: false, message: "API unreachable" };
+  }
+}
+
 export async function signOut(): Promise<void> {
   const { refreshToken } = await readTokens();
   if (refreshToken) {

@@ -27,6 +27,7 @@ export type DomainErrorCode =
   | "SESSION_INVALIDATED"
   | "EMAIL_TAKEN"
   | "SAPC_NUMBER_TAKEN"
+  | "ADMIN_EXISTS"
   // §8 attendance
   | "NOT_BOOKING_OWNER"
   | "BOOKING_NOT_CONFIRMED"

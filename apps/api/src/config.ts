@@ -49,6 +49,17 @@ const schema = z.object({
   AUTH_SECRET: z.string().trim().min(32, "AUTH_SECRET must be at least 32 characters"),
 
   /**
+   * One-shot secret for creating the first admin in the browser (`POST
+   * /auth/bootstrap-admin`). Unset after that account exists. Optional so
+   * local boots without it; production can set it once, then remove it.
+   */
+  ADMIN_SETUP_SECRET: z
+    .string()
+    .trim()
+    .min(16, "ADMIN_SETUP_SECRET must be at least 16 characters")
+    .optional(),
+
+  /**
    * §0.1 — where alerts go. Sentry, PagerDuty Events, Opsgenie, a Slack hook:
    * anything that accepts a JSON POST. Optional so the service boots locally
    * without one; `assertProductionReady` refuses to let that reach production,

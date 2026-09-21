@@ -113,6 +113,7 @@ export default async function LoginPage({
 
       <p className="hint" style={{ marginTop: "1rem" }}>
         New here? <Link href="/register">Create an account</Link>.
+        First admin? <Link href="/setup">Set up here</Link>.
       </p>
     </main>
   );

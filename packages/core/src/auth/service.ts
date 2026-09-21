@@ -8,6 +8,7 @@ import {
   sessions,
   users,
   type Database,
+  type Executor,
   type UserRole,
 } from "@locum/db";
 import { DomainError, isUniqueViolation } from "../errors";
@@ -18,7 +19,7 @@ import {
   signAccessToken,
   type AccessTokenClaims,
 } from "./tokens";
-import { matchedTotpCounter } from "./totp";
+import { generateTotpSecret, matchedTotpCounter, totpProvisioningUri } from "./totp";
 
 export interface AuthConfig {
   readonly secret: string;
@@ -170,6 +171,70 @@ export async function register(
     }
 
     return { userId };
+  });
+}
+
+export interface BootstrapAdminResult {
+  readonly userId: string;
+  readonly email: string;
+  readonly mfaSecret: string;
+  readonly otpauthUrl: string;
+}
+
+/**
+ * First admin only. Self-service signup cannot create this role (§12.1).
+ * Callers must gate this with a setup secret at the HTTP edge.
+ */
+export async function adminAccountExists(db: Executor): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.role, "admin"))
+    .limit(1);
+  return existing !== undefined;
+}
+
+export async function bootstrapFirstAdmin(
+  db: Database,
+  input: { readonly email: string; readonly password: string; readonly fullName: string },
+): Promise<BootstrapAdminResult> {
+  const email = input.email.trim().toLowerCase();
+  const mfaSecret = generateTotpSecret();
+  const passwordHash = await hashPassword(input.password);
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(87201493)`);
+
+    if (await adminAccountExists(tx)) {
+      throw new DomainError("ADMIN_EXISTS", "An admin account already exists");
+    }
+
+    try {
+      const [created] = await tx
+        .insert(users)
+        .values({
+          id: randomUUID(),
+          role: "admin",
+          email,
+          fullName: input.fullName,
+          passwordHash,
+          mfaSecret,
+          mfaEnrolledAt: new Date(),
+        })
+        .returning({ id: users.id, email: users.email });
+
+      return {
+        userId: created!.id,
+        email: created!.email,
+        mfaSecret,
+        otpauthUrl: totpProvisioningUri(mfaSecret, email),
+      };
+    } catch (error) {
+      if (isUniqueViolation(error, "users_email_lower_key")) {
+        throw new DomainError("EMAIL_TAKEN", "An account with this email already exists");
+      }
+      throw error;
+    }
   });
 }
 
