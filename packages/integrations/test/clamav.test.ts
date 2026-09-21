@@ -76,15 +76,22 @@ describe.skipIf(!haveClamd)("GATE security.malware_scanning — against a real c
     expect(await scanner.scan(large)).toEqual({ clean: true });
   });
 
-  it("finds EICAR embedded in a larger file", async () => {
-    // A real upload is not the bare test string; it is a document with
-    // something hidden in it, which is what `*` offset matching is for.
-    const embedded = Buffer.concat([
-      Buffer.alloc(100 * 1024, 0x41),
+  it("finds EICAR in a larger file (trailing payload after the test string)", async () => {
+    /*
+     * A real upload is not the bare 68-byte EICAR file. ClamAV's EICAR
+     * signature matches at offset 0 and allows trailing bytes (the `*` in the
+     * published test-file spec). Prefixing junk before the string is a
+     * different signature than EICAR — CI's real clamd correctly returns OK
+     * for that, which made this assertion fail as `clean === true`.
+     *
+     * Trailing padding past the 64 KiB INSTREAM chunk boundary still proves
+     * the daemon scanned the whole stream, not only the first chunk.
+     */
+    const withTrailer = Buffer.concat([
       Buffer.from(EICAR_TEST_STRING, "utf8"),
       Buffer.alloc(100 * 1024, 0x42),
     ]);
-    const verdict = await scanner.scan(embedded);
+    const verdict = await scanner.scan(withTrailer);
     expect(verdict.clean).toBe(false);
   });
 
