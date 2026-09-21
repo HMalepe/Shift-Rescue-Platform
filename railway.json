@@ -5,8 +5,8 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "pnpm --filter @locum/api start",
-    "preDeployCommand": "pnpm --filter @locum/db migrate",
+    "startCommand": "sh -c 'if [ \"$RAILWAY_SERVICE_NAME\" = \"web\" ]; then pnpm --filter @locum/web exec next start -H 0.0.0.0 -p ${PORT:-3000}; else pnpm --filter @locum/api start; fi'",
+    "preDeployCommand": "sh -c 'if [ \"$RAILWAY_SERVICE_NAME\" != \"web\" ]; then pnpm --filter @locum/db migrate; fi'",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 30,
     "restartPolicyType": "ON_FAILURE",
