@@ -1,6 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { api, UnauthenticatedError } from "./api";
+import { readTokens } from "./session";
 
 export type Role = "locum" | "manager" | "admin";
 
@@ -24,6 +25,9 @@ export interface Viewer {
  * app would be ugly, not insecure.
  */
 export async function requireViewer(): Promise<Viewer> {
+  const { accessToken, refreshToken } = await readTokens();
+  if (!accessToken && !refreshToken) redirect("/login");
+
   try {
     const me = await api.query<
       { authenticated: true; id: string; role: Role } | { authenticated: false }

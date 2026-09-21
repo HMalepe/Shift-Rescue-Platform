@@ -54,18 +54,24 @@ async function callOnce<T>(
       ? `${API_URL}/trpc/${path}?input=${encodeURIComponent(JSON.stringify(init.body ?? {}))}`
       : `${API_URL}/trpc/${path}`;
 
-  const response = await fetch(url, {
-    method: init.method,
-    headers: {
-      "content-type": "application/json",
-      ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
-    },
-    ...(init.method === "POST" ? { body: JSON.stringify(init.body ?? {}) } : {}),
-    // Every read is per-request. A shift board cached across users would show
-    // one pharmacy's applicants to another, which is the worst possible bug to
-    // introduce for a performance gain nobody asked for.
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: init.method,
+      headers: {
+        "content-type": "application/json",
+        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
+      },
+      ...(init.method === "POST" ? { body: JSON.stringify(init.body ?? {}) } : {}),
+      // Every read is per-request. A shift board cached across users would show
+      // one pharmacy's applicants to another, which is the worst possible bug to
+      // introduce for a performance gain nobody asked for.
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    return { ok: false, status: 503, message: "API unreachable" };
+  }
 
   const envelope = (await response.json()) as TrpcEnvelope<T>;
 
@@ -113,6 +119,7 @@ export async function refreshSession(): Promise<string | undefined> {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ refreshToken }),
       cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!response.ok) {
@@ -171,17 +178,22 @@ export async function signIn(input: {
   password: string;
   totpCode?: string;
 }): Promise<{ ok: true } | { ok: false; message: string; domainCode?: string }> {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-    cache: "no-store",
-  });
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
 
-  if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+    if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
 
-  await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
-  return { ok: true };
+    await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
+    return { ok: true };
+  } catch {
+    return { ok: false, message: "API unreachable" };
+  }
 }
 
 /**
@@ -238,6 +250,7 @@ export async function register(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
