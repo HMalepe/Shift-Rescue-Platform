@@ -274,7 +274,6 @@ export async function fetchSetupStatus(): Promise<{ available: boolean }> {
 }
 
 export async function bootstrapAdminAccount(input: {
-  bootstrapSecret: string;
   email: string;
   password: string;
   fullName: string;

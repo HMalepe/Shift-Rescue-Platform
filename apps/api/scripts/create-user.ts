@@ -1,8 +1,9 @@
 /**
  * Bootstraps a single user directly in the database.
  *
- * Prefer creating the first admin in the browser: set ADMIN_SETUP_SECRET on
- * the API and open /setup. This script remains for extra accounts.
+ * Prefer creating the first admin in the browser: set ADMIN_EMAIL and
+ * ADMIN_PASSWORD on Vercel and open /setup. This script remains for extra
+ * accounts.
  *
  * There used to be no self-service locum/manager signup; that path exists now
  * at /auth/register. Admin still cannot self-serve except via /setup once.

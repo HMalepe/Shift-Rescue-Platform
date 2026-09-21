@@ -35,7 +35,13 @@ In the Vercel project's Settings → Environment Variables, set:
 
 ```
 API_URL = https://<your-api-service>.up.railway.app
+ADMIN_EMAIL = you@example.com
+ADMIN_PASSWORD = <at least 12 characters>
 ```
+
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` are server-only (no `NEXT_PUBLIC_` prefix).
+They create the first admin: after a Production deploy, open `/setup` and
+click Create. Do not put the password in the browser bundle.
 
 for **Production** (and **Preview**, if you want preview deploys to work
 against the same backend — otherwise point Preview at a separate staging API

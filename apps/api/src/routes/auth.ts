@@ -1,4 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Database } from "@locum/db";
@@ -24,12 +23,6 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 
-function setupSecretMatches(provided: string, expected: string): boolean {
-  const a = createHash("sha256").update(provided).digest();
-  const b = createHash("sha256").update(expected).digest();
-  return timingSafeEqual(a, b);
-}
-
 const registerCommon = {
   email: z.string().trim().email(),
   /**
@@ -42,10 +35,7 @@ const registerCommon = {
   fullName: z.string().trim().min(2).max(200),
 };
 
-const bootstrapAdminSchema = z.object({
-  bootstrapSecret: z.string().min(1),
-  ...registerCommon,
-});
+const bootstrapAdminSchema = z.object(registerCommon);
 
 const registerSchema = z.discriminatedUnion("role", [
   z.object({
@@ -211,19 +201,10 @@ export function registerAuthRoutes(
     });
 
     scoped.post("/auth/bootstrap-admin", async (request, reply) => {
-      const expected = config.ADMIN_SETUP_SECRET;
-      if (!expected) {
-        return reply.code(404).send({ error: "not found" });
-      }
-
       const parsed = bootstrapAdminSchema.safeParse(request.body);
       if (!parsed.success) {
         const message = parsed.error.issues[0]?.message ?? "invalid request";
         return reply.code(400).send({ error: message });
-      }
-
-      if (!setupSecretMatches(parsed.data.bootstrapSecret, expected)) {
-        return reply.code(401).send({ error: "INVALID_SETUP_SECRET", message: "Invalid setup secret" });
       }
 
       try {
@@ -244,9 +225,6 @@ export function registerAuthRoutes(
   });
 
   app.get("/auth/setup-status", async (_request, reply) => {
-    if (!config.ADMIN_SETUP_SECRET) {
-      return reply.code(200).send({ available: false });
-    }
     const available = !(await adminAccountExists(db));
     return reply.code(200).send({ available });
   });

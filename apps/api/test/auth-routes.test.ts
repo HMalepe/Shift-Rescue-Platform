@@ -24,7 +24,6 @@ beforeAll(async () => {
       ...process.env,
       NODE_ENV: "test",
       AUTH_SECRET: "test-auth-secret-at-least-32-characters-long",
-      ADMIN_SETUP_SECRET: "test-admin-setup-secret",
       // Set so the webhook's signature check is ACTIVE. Without a token the
       // check is skipped, which is intended for local development and blocked
       // in production by assertProductionReady — but it would make the
@@ -167,26 +166,13 @@ describe("GATE security.auth_rate_limit", () => {
     expect(second.statusCode).toBe(204);
   });
 
-  it("bootstraps the first admin when the setup secret matches", async () => {
+  it("bootstraps the first admin once", async () => {
     const email = `admin-boot-${Date.now()}-${Math.random().toString(36).slice(2)}@test.invalid`;
-
-    const denied = await server.app.inject({
-      method: "POST",
-      url: "/auth/bootstrap-admin",
-      payload: {
-        bootstrapSecret: "wrong-secret-value",
-        email,
-        password: "s3cure-password!",
-        fullName: "Admin Person",
-      },
-    });
-    expect(denied.statusCode).toBe(401);
 
     const created = await server.app.inject({
       method: "POST",
       url: "/auth/bootstrap-admin",
       payload: {
-        bootstrapSecret: "test-admin-setup-secret",
         email,
         password: "s3cure-password!",
         fullName: "Admin Person",
@@ -211,5 +197,16 @@ describe("GATE security.auth_rate_limit", () => {
 
     const status = await server.app.inject({ method: "GET", url: "/auth/setup-status" });
     expect(status.json()).toEqual({ available: false });
+
+    const second = await server.app.inject({
+      method: "POST",
+      url: "/auth/bootstrap-admin",
+      payload: {
+        email: `admin-boot-two-${Date.now()}@test.invalid`,
+        password: "s3cure-password!",
+        fullName: "Second",
+      },
+    });
+    expect(second.statusCode).toBe(409);
   });
 });

@@ -108,8 +108,6 @@ Environment variables:
 ```
 NODE_ENV=production
 AUTH_SECRET=<64+ random chars>
-# Optional, first admin only. Remove after /setup succeeds.
-ADMIN_SETUP_SECRET=<16+ random chars>
 DATABASE_URL=postgresql://locum:<password>@postgres.railway.internal:5432/locum_planner
 REDIS_URL=<paste the Redis service's connection string>
 
