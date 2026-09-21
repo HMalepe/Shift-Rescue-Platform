@@ -1,7 +1,38 @@
 import { createServer, type Server } from "node:net";
+import { crc32 } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { EICAR_TEST_STRING } from "@locum/core";
 import { ClamavDocumentScanner, ClamavError } from "../src/index";
+
+/** Store-only zip so clamd's archive recursion can see EICAR inside a document. */
+function zipStored(filename: string, content: Buffer): Buffer {
+  const crc = crc32(content) >>> 0;
+  const name = Buffer.from(filename, "utf8");
+  const local = Buffer.alloc(30);
+  local.write("PK\u0003\u0004", 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt32LE(crc, 14);
+  local.writeUInt32LE(content.length, 18);
+  local.writeUInt32LE(content.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const file = Buffer.concat([local, name, content]);
+  const central = Buffer.alloc(46);
+  central.write("PK\u0001\u0002", 0);
+  central.writeUInt16LE(20, 4);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt32LE(crc, 16);
+  central.writeUInt32LE(content.length, 20);
+  central.writeUInt32LE(content.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  const cd = Buffer.concat([central, name]);
+  const eocd = Buffer.alloc(22);
+  eocd.write("PK\u0005\u0006", 0);
+  eocd.writeUInt16LE(1, 8);
+  eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(cd.length, 12);
+  eocd.writeUInt32LE(file.length, 16);
+  return Buffer.concat([file, cd, eocd]);
+}
 
 /**
  * GATE: security.malware_scanning
@@ -76,22 +107,16 @@ describe.skipIf(!haveClamd)("GATE security.malware_scanning — against a real c
     expect(await scanner.scan(large)).toEqual({ clean: true });
   });
 
-  it("finds EICAR in a larger file (trailing payload after the test string)", async () => {
+  it("finds EICAR inside a zip (real upload shape)", async () => {
     /*
-     * A real upload is not the bare 68-byte EICAR file. ClamAV's EICAR
-     * signature matches at offset 0 and allows trailing bytes (the `*` in the
-     * published test-file spec). Prefixing junk before the string is a
-     * different signature than EICAR — CI's real clamd correctly returns OK
-     * for that, which made this assertion fail as `clean === true`.
-     *
-     * Trailing padding past the 64 KiB INSTREAM chunk boundary still proves
-     * the daemon scanned the whole stream, not only the first chunk.
+     * Bare EICAR is already covered above. A live upload is a document
+     * container; clamd's archive recursion is what actually inspects ID
+     * packs. Padding EICAR with raw bytes is not the EICAR test file and
+     * CI's daemon correctly returns OK for that — which is not a scanner
+     * bug, just the published signature.
      */
-    const withTrailer = Buffer.concat([
-      Buffer.from(EICAR_TEST_STRING, "utf8"),
-      Buffer.alloc(100 * 1024, 0x42),
-    ]);
-    const verdict = await scanner.scan(withTrailer);
+    const archive = zipStored("eicar.com", Buffer.from(EICAR_TEST_STRING, "utf8"));
+    const verdict = await scanner.scan(archive);
     expect(verdict.clean).toBe(false);
   });
 
