@@ -124,7 +124,6 @@ export async function refreshSession(): Promise<string | undefined> {
       });
 
       if (!response.ok) {
-        await clearTokens();
         return undefined;
       }
 
@@ -135,7 +134,6 @@ export async function refreshSession(): Promise<string | undefined> {
       await storeTokens(tokens);
       return tokens.accessToken;
     } catch {
-      await clearTokens();
       return undefined;
     }
   })().finally(() => {

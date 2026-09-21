@@ -1,13 +1,23 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { api, UnauthenticatedError } from "./api";
-import { clearTokens, readTokens } from "./session";
+import { readTokens } from "./session";
 
 export type Role = "locum" | "manager" | "admin";
 
 export interface Viewer {
   readonly id: string;
   readonly role: Role;
+}
+
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
 }
 
 /**
@@ -33,15 +43,12 @@ export async function requireViewer(): Promise<Viewer> {
       { authenticated: true; id: string; role: Role } | { authenticated: false }
     >("me");
 
-    if (!me.authenticated) {
-      await clearTokens();
-      redirect("/login");
-    }
+    if (!me.authenticated) redirect("/session/clear");
     return { id: me.id, role: me.role };
   } catch (error) {
-    await clearTokens();
-    if (error instanceof UnauthenticatedError) redirect("/login");
-    redirect("/login");
+    if (isNextRedirect(error)) throw error;
+    if (error instanceof UnauthenticatedError) redirect("/session/clear");
+    redirect("/session/clear");
   }
 }
 

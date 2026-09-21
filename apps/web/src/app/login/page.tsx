@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { api, signIn } from "@/lib/api";
-import { clearTokens, isSignedIn } from "@/lib/session";
+import { isSignedIn } from "@/lib/session";
 import { homeFor, type Role } from "@/lib/guard";
 
 /**
@@ -24,10 +24,18 @@ export default async function LoginPage({
         { authenticated: true; id: string; role: Role } | { authenticated: false }
       >("me");
       if (me.authenticated) redirect(homeFor(me.role));
-      await clearTokens();
-    } catch {
-      await clearTokens();
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "digest" in error &&
+        typeof (error as { digest?: unknown }).digest === "string" &&
+        (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw error;
+      }
     }
+    redirect("/session/clear");
   }
   const { error } = await searchParams;
 
