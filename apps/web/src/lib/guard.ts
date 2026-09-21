@@ -1,7 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { api, UnauthenticatedError } from "./api";
-import { readTokens } from "./session";
+import { clearTokens, readTokens } from "./session";
 
 export type Role = "locum" | "manager" | "admin";
 
@@ -33,11 +33,15 @@ export async function requireViewer(): Promise<Viewer> {
       { authenticated: true; id: string; role: Role } | { authenticated: false }
     >("me");
 
-    if (!me.authenticated) redirect("/login");
+    if (!me.authenticated) {
+      await clearTokens();
+      redirect("/login");
+    }
     return { id: me.id, role: me.role };
   } catch (error) {
+    await clearTokens();
     if (error instanceof UnauthenticatedError) redirect("/login");
-    throw error;
+    redirect("/login");
   }
 }
 

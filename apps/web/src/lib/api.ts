@@ -114,28 +114,30 @@ export async function refreshSession(): Promise<string | undefined> {
     const { refreshToken } = await readTokens();
     if (!refreshToken) return undefined;
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
 
-    if (!response.ok) {
-      // Refresh rejected: expired, revoked, or flagged as reused. All three
-      // mean the session is over — clearing the cookies is what stops the
-      // client retrying a dead token on every subsequent page.
+      if (!response.ok) {
+        await clearTokens();
+        return undefined;
+      }
+
+      const tokens = (await response.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      await storeTokens(tokens);
+      return tokens.accessToken;
+    } catch {
       await clearTokens();
       return undefined;
     }
-
-    const tokens = (await response.json()) as {
-      accessToken: string;
-      refreshToken: string;
-    };
-    await storeTokens(tokens);
-    return tokens.accessToken;
   })().finally(() => {
     refreshInFlight = undefined;
   });

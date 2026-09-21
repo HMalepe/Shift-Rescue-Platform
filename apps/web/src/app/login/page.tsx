@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { signIn } from "@/lib/api";
-import { isSignedIn } from "@/lib/session";
+import { api, signIn } from "@/lib/api";
+import { clearTokens, isSignedIn } from "@/lib/session";
+import { homeFor, type Role } from "@/lib/guard";
 
 /**
  * Sign in.
@@ -17,7 +18,17 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  if (await isSignedIn()) redirect("/");
+  if (await isSignedIn()) {
+    try {
+      const me = await api.query<
+        { authenticated: true; id: string; role: Role } | { authenticated: false }
+      >("me");
+      if (me.authenticated) redirect(homeFor(me.role));
+      await clearTokens();
+    } catch {
+      await clearTokens();
+    }
+  }
   const { error } = await searchParams;
 
   async function submit(formData: FormData) {
