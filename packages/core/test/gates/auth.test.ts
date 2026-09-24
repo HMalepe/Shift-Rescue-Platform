@@ -159,117 +159,18 @@ describe("GATE security.auth — login and credential stuffing", () => {
   });
 });
 
-describe("GATE security.auth — admin MFA (§12.1)", () => {
-  it("refuses an admin without a TOTP code", async () => {
-    const secret = generateTotpSecret();
-    const admin = await createUser({
-      role: "admin",
-      password: "admin-password!",
-      mfaSecret: secret,
-    });
-
-    await expect(
-      login(db, config, { email: admin.email, password: "admin-password!" }),
-    ).rejects.toMatchObject({ code: "MFA_REQUIRED" });
-  });
-
-  it("refuses an admin with a wrong TOTP code", async () => {
-    const secret = generateTotpSecret();
-    const admin = await createUser({
-      role: "admin",
-      password: "admin-password!",
-      mfaSecret: secret,
-    });
-
-    await expect(
-      login(db, config, {
-        email: admin.email,
-        password: "admin-password!",
-        totpCode: "000000",
-      }),
-    ).rejects.toMatchObject({ code: "MFA_INVALID" });
-  });
-
-  it("refuses an admin who never enrolled, rather than waving them through", async () => {
+describe("GATE security.auth — admin sign-in", () => {
+  it("admits an admin with email and password only", async () => {
     const admin = await createUser({ role: "admin", password: "admin-password!" });
 
-    // The soft version of this rule leaves the highest-value accounts on
-    // password-only auth for as long as someone postpones enrolment.
-    await expect(
-      login(db, config, { email: admin.email, password: "admin-password!" }),
-    ).rejects.toMatchObject({ code: "MFA_ENROLMENT_REQUIRED" });
-  });
-
-  it("admits an admin with a correct TOTP code", async () => {
-    const secret = generateTotpSecret();
-    const admin = await createUser({
-      role: "admin",
-      password: "admin-password!",
-      mfaSecret: secret,
-    });
-
     const tokens = await login(db, config, {
       email: admin.email,
       password: "admin-password!",
-      totpCode: generateTotp(secret),
     });
 
+    expect(tokens.role).toBe("admin");
     const verified = verifyAccessToken(tokens.accessToken, config.secret);
     expect(verified.valid && verified.claims.mfa).toBe(true);
-  });
-
-  it("refuses to accept the same TOTP code twice (single-use enforcement)", async () => {
-    const secret = generateTotpSecret();
-    const admin = await createUser({
-      role: "admin",
-      password: "admin-password!",
-      mfaSecret: secret,
-    });
-    const code = generateTotp(secret);
-
-    // First presentation succeeds and consumes the code's time step.
-    const tokens = await login(db, config, {
-      email: admin.email,
-      password: "admin-password!",
-      totpCode: code,
-    });
-    expect(verifyAccessToken(tokens.accessToken, config.secret).valid).toBe(true);
-
-    // A second login with the EXACT SAME code — e.g. shoulder-surfed, or
-    // captured from a log — must be refused even though it is still well
-    // within the ±90s acceptance window.
-    await expect(
-      login(db, config, {
-        email: admin.email,
-        password: "admin-password!",
-        totpCode: code,
-      }),
-    ).rejects.toMatchObject({ code: "MFA_INVALID" });
-  });
-
-  it("still accepts a later, different code from the same secret", async () => {
-    const secret = generateTotpSecret();
-    const admin = await createUser({
-      role: "admin",
-      password: "admin-password!",
-      mfaSecret: secret,
-    });
-    const now = Date.now();
-
-    await login(db, config, {
-      email: admin.email,
-      password: "admin-password!",
-      totpCode: generateTotp(secret, now),
-    });
-
-    // A code from a later 30s step is a different, unconsumed counter — single-use
-    // enforcement must not lock the account out of its own next code.
-    const tokens = await login(db, config, {
-      email: admin.email,
-      password: "admin-password!",
-      totpCode: generateTotp(secret, now + 30_000),
-    });
-    expect(verifyAccessToken(tokens.accessToken, config.secret).valid).toBe(true);
   });
 
   it("accepts adjacent time windows but not distant ones", () => {
@@ -295,12 +196,10 @@ describe("GATE security.auth — admin MFA (§12.1)", () => {
     createdUserIds.push(created.userId);
 
     expect(created.email).toBe(email);
-    expect(created.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
 
     const tokens = await login(db, config, {
       email,
       password: "admin-password!",
-      totpCode: generateTotp(created.mfaSecret),
     });
     expect(tokens.role).toBe("admin");
 

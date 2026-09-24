@@ -185,9 +185,9 @@ describe("GATE security.auth_rate_limit", () => {
     }
 
     expect(created.statusCode).toBe(201);
-    const body = created.json() as { email: string; mfaSecret: string; otpauthUrl: string };
+    const body = created.json() as { email: string };
     expect(body.email).toBe(email);
-    expect(body.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+    expect(body).not.toHaveProperty("mfaSecret");
 
     const [row] = await server.db
       .select({ id: s.users.id })

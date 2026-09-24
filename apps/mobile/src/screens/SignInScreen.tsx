@@ -3,15 +3,7 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { signIn } from "@/lib/api";
 import { theme } from "@/theme";
 
-/**
- * Sign in.
- *
- * No TOTP field, unlike the web client. §12.1 requires MFA on admin accounts,
- * and this app is for locums — an admin has no reason to be here, and offering
- * the field would imply otherwise. If an admin ever does sign in, the API
- * returns MFA_REQUIRED and the message says to use the web console, which is
- * the honest answer rather than a half-built second factor on a phone.
- */
+/** Sign in with email and password. */
 export function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

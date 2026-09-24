@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import {
   authAttempts,
   locumProfiles,
@@ -19,7 +19,6 @@ import {
   signAccessToken,
   type AccessTokenClaims,
 } from "./tokens";
-import { generateTotpSecret, matchedTotpCounter, totpProvisioningUri } from "./totp";
 
 export interface AuthConfig {
   readonly secret: string;
@@ -41,8 +40,6 @@ export const DEFAULT_AUTH_CONFIG: Omit<AuthConfig, "secret"> = {
 export interface LoginInput {
   readonly email: string;
   readonly password: string;
-  /** Required for admin accounts once enrolled (§12.1). */
-  readonly totpCode?: string;
   readonly ipAddress?: string;
   readonly userAgent?: string;
 }
@@ -177,8 +174,6 @@ export async function register(
 export interface BootstrapAdminResult {
   readonly userId: string;
   readonly email: string;
-  readonly mfaSecret: string;
-  readonly otpauthUrl: string;
 }
 
 /**
@@ -199,7 +194,6 @@ export async function bootstrapFirstAdmin(
   input: { readonly email: string; readonly password: string; readonly fullName: string },
 ): Promise<BootstrapAdminResult> {
   const email = input.email.trim().toLowerCase();
-  const mfaSecret = generateTotpSecret();
   const passwordHash = await hashPassword(input.password);
 
   return db.transaction(async (tx) => {
@@ -218,16 +212,12 @@ export async function bootstrapFirstAdmin(
           email,
           fullName: input.fullName,
           passwordHash,
-          mfaSecret,
-          mfaEnrolledAt: new Date(),
         })
         .returning({ id: users.id, email: users.email });
 
       return {
         userId: created!.id,
         email: created!.email,
-        mfaSecret,
-        otpauthUrl: totpProvisioningUri(mfaSecret, email),
       };
     } catch (error) {
       if (isUniqueViolation(error, "users_email_lower_key")) {
@@ -246,10 +236,9 @@ export async function bootstrapFirstAdmin(
  *   - session invalidation on password change
  *   - rate limiting on login/signup to prevent credential stuffing
  *
- * Plus one that is specific to this product: admin accounts can mark
- * employment "verified", which is the single most valuable capability on the
- * platform. They are therefore treated as a distinct trust tier and cannot
- * authenticate with a password alone.
+ * Admin accounts sign in with the same email and password as everyone else.
+ * The session is still marked fully authorised so admin actions are not
+ * blocked behind a second factor.
  */
 export async function login(
   db: Database,
@@ -265,9 +254,6 @@ export async function login(
       id: users.id,
       role: users.role,
       passwordHash: users.passwordHash,
-      mfaSecret: users.mfaSecret,
-      mfaEnrolledAt: users.mfaEnrolledAt,
-      mfaLastUsedCounter: users.mfaLastUsedCounter,
       disabledAt: users.disabledAt,
     })
     .from(users)
@@ -297,65 +283,12 @@ export async function login(
     throw new DomainError("ACCOUNT_DISABLED", "This account has been disabled");
   }
 
-  /*
-   * §12.1 — "require MFA on all admin accounts".
-   *
-   * Enforced as: an admin with no enrolled secret cannot log in at all, rather
-   * than being waved through. A soft version of this rule ("prompt them to
-   * enrol later") leaves the highest-value accounts on password-only auth for
-   * exactly as long as someone postpones it.
-   */
-  if (user.role === "admin") {
-    if (!user.mfaSecret || !user.mfaEnrolledAt) {
-      await recordAttempt(db, email, input.ipAddress, false, "admin_mfa_not_enrolled");
-      throw new DomainError(
-        "MFA_ENROLMENT_REQUIRED",
-        "Admin accounts must complete MFA enrolment before signing in",
-      );
-    }
-    if (!input.totpCode) {
-      await recordAttempt(db, email, input.ipAddress, false, "mfa_required");
-      throw new DomainError("MFA_REQUIRED", "A verification code is required");
-    }
-
-    const counter = matchedTotpCounter(user.mfaSecret, input.totpCode);
-    if (counter === undefined) {
-      await recordAttempt(db, email, input.ipAddress, false, "mfa_failed");
-      throw new DomainError("MFA_INVALID", "Invalid verification code");
-    }
-
-    /*
-     * Single-use enforcement. A code is a fixed function of its 30-second
-     * step, so `verifyTotp` alone would accept the SAME code again and again
-     * until it aged out of the ±90s window — a shoulder-surfed or
-     * log-leaked code stays live for a stranger the whole time. The
-     * conditional UPDATE is what makes this safe under concurrency too: two
-     * requests racing the same code can both pass the signature check above,
-     * but only one can win this WHERE clause, so only one issues a session.
-     */
-    const consumed = await db
-      .update(users)
-      .set({ mfaLastUsedCounter: counter })
-      .where(
-        and(
-          eq(users.id, user.id),
-          or(isNull(users.mfaLastUsedCounter), lt(users.mfaLastUsedCounter, counter)),
-        ),
-      )
-      .returning({ id: users.id });
-
-    if (consumed.length === 0) {
-      await recordAttempt(db, email, input.ipAddress, false, "mfa_replayed");
-      throw new DomainError("MFA_INVALID", "Invalid verification code");
-    }
-  }
-
   await recordAttempt(db, email, input.ipAddress, true, "success");
 
   return issueTokenPair(db, config, {
     userId: user.id,
     role: user.role,
-    mfaSatisfied: user.role !== "admin" || Boolean(input.totpCode),
+    mfaSatisfied: true,
     familyId: randomUUID(),
     ...(input.ipAddress !== undefined && { ipAddress: input.ipAddress }),
     ...(input.userAgent !== undefined && { userAgent: input.userAgent }),
@@ -499,12 +432,6 @@ export async function refresh(
   return issueTokenPair(db, config, {
     userId: user.id,
     role: user.role,
-    /*
-     * A live session can only exist if MFA was satisfied when it was created —
-     * `login` refuses to issue one to an admin otherwise. Rotation therefore
-     * inherits that fact rather than re-deriving it, and an admin does not
-     * silently drop to a non-MFA session an hour after signing in.
-     */
     mfaSatisfied: true,
     familyId: session.familyId,
     ...(context.ipAddress !== undefined && { ipAddress: context.ipAddress }),

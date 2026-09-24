@@ -12,16 +12,12 @@
  *   DATABASE_URL=... EMAIL=you@example.com PASSWORD=... FULL_NAME="Your Name" ROLE=manager \
  *     pnpm --filter @locum/api create-user
  *
- * ROLE is "manager", "locum", or "admin". Admin accounts require MFA
- * (packages/core/src/auth/service.ts login()) — this script enrols one
- * automatically and prints the otpauth:// URI so it can be scanned into an
- * authenticator app immediately. There is no later "enrol MFA" endpoint
- * either, so an admin account made without capturing that output is unusable
- * until someone updates its mfa_secret column by hand.
+ * ROLE is "manager", "locum", or "admin". Admin accounts sign in with email
+ * and password, the same as every other role.
  */
 import { randomUUID } from "node:crypto";
 import { createDatabase, users } from "@locum/db";
-import { hashPassword, generateTotpSecret, totpProvisioningUri } from "@locum/core";
+import { hashPassword } from "@locum/core";
 
 const url = process.env["DATABASE_URL"];
 if (!url) {
@@ -52,11 +48,6 @@ const { db, client } = createDatabase({ url });
 try {
   const passwordHash = await hashPassword(password);
 
-  const mfaFields =
-    role === "admin"
-      ? { mfaSecret: generateTotpSecret(), mfaEnrolledAt: new Date() }
-      : {};
-
   const [created] = await db
     .insert(users)
     .values({
@@ -65,18 +56,10 @@ try {
       email,
       fullName,
       passwordHash,
-      ...mfaFields,
     })
     .returning({ id: users.id, email: users.email, role: users.role });
 
   console.log("created user:", created);
-
-  if (role === "admin" && mfaFields.mfaSecret) {
-    console.log("\nMFA secret (save this now, it is not shown again):");
-    console.log(mfaFields.mfaSecret);
-    console.log("\nScan this into an authenticator app:");
-    console.log(totpProvisioningUri(mfaFields.mfaSecret, email));
-  }
 } catch (error) {
   console.error("create-user failed:", error);
   process.exitCode = 1;

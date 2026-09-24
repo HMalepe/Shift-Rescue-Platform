@@ -4,7 +4,7 @@ import { bootstrapAdminAccount } from "@/lib/api";
 import { readAdminEnv } from "@/lib/admin-env";
 
 export type SetupState =
-  | { ok: true; email: string; mfaSecret: string; otpauthUrl: string }
+  | { ok: true; email: string }
   | { ok: false; message: string }
   | null;
 

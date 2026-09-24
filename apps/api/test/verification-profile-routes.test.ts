@@ -4,7 +4,6 @@ import { eq, inArray } from "drizzle-orm";
 import * as s from "@locum/db/schema";
 import {
   EICAR_TEST_STRING,
-  generateTotp,
   generateTotpSecret,
   hashPassword,
   signAccessToken,
@@ -98,7 +97,6 @@ async function makeActor(
     payload: {
       email,
       password: PASSWORD,
-      ...(options.mfaSecret ? { totpCode: generateTotp(options.mfaSecret) } : {}),
     },
     headers: { "x-forwarded-for": `198.18.0.${(ipCounter += 1) % 250}` },
   });

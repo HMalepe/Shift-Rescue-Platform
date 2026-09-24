@@ -11,19 +11,10 @@ export function SetupForm({ email }: { email: string }) {
     return (
       <div className="card">
         <p>
-          Admin account created for <strong>{state.email}</strong>. Add this to an
-          authenticator app now — it is not shown again.
-        </p>
-        <div className="field">
-          <label htmlFor="mfaSecret">Authenticator secret</label>
-          <input id="mfaSecret" readOnly value={state.mfaSecret} />
-        </div>
-        <p className="hint">
-          <a href={state.otpauthUrl}>Open in authenticator app</a>
+          Admin account created for <strong>{state.email}</strong>.
         </p>
         <p className="hint" style={{ marginTop: "1rem" }}>
-          Then <Link href="/login">sign in</Link> with that email, the Vercel
-          password, and the 6-digit code.
+          <Link href="/login">Sign in</Link> with that email and the Vercel password.
         </p>
       </div>
     );

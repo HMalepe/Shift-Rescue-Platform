@@ -176,7 +176,6 @@ export const api = {
 export async function signIn(input: {
   email: string;
   password: string;
-  totpCode?: string;
 }): Promise<{ ok: true } | { ok: false; message: string; domainCode?: string }> {
   try {
     const response = await fetch(`${API_URL}/auth/login`, {
@@ -277,10 +276,7 @@ export async function bootstrapAdminAccount(input: {
   email: string;
   password: string;
   fullName: string;
-}): Promise<
-  | { ok: true; email: string; mfaSecret: string; otpauthUrl: string }
-  | { ok: false; message: string }
-> {
+}): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
   try {
     const response = await fetch(`${API_URL}/auth/bootstrap-admin`, {
       method: "POST",
@@ -292,11 +288,7 @@ export async function bootstrapAdminAccount(input: {
 
     if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
 
-    const body = (await response.json()) as {
-      email: string;
-      mfaSecret: string;
-      otpauthUrl: string;
-    };
+    const body = (await response.json()) as { email: string };
     return { ok: true, ...body };
   } catch {
     return { ok: false, message: "API unreachable" };

@@ -18,7 +18,6 @@ import type { Config } from "../config";
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-  totpCode: z.string().optional(),
 });
 
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
@@ -122,7 +121,6 @@ export function registerAuthRoutes(
         const tokens = await login(db, authConfig, {
           email: parsed.data.email,
           password: parsed.data.password,
-          ...(parsed.data.totpCode !== undefined && { totpCode: parsed.data.totpCode }),
           ...(request.ip !== undefined && { ipAddress: request.ip }),
           ...(typeof request.headers["user-agent"] === "string" && {
             userAgent: request.headers["user-agent"],
@@ -215,8 +213,6 @@ export function registerAuthRoutes(
         });
         return reply.code(201).send({
           email: created.email,
-          mfaSecret: created.mfaSecret,
-          otpauthUrl: created.otpauthUrl,
         });
       } catch (error) {
         return sendDomainError(reply, error, request.log);

@@ -25,7 +25,8 @@ export default async function SetupPage() {
       ) : (
         <>
           <p className="lede">
-            One account, once. After this, sign in with an authenticator code.
+            One account, once. After this, sign in with the email and password from
+            Vercel.
           </p>
           <SetupForm email={admin.email} />
         </>
