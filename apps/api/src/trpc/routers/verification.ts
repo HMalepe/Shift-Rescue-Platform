@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { documents, locumProfiles } from "@locum/db";
 import {
   createSignedUrl,
+  listAccounts,
   listPendingLocums,
   listPendingPharmacies,
   listPendingReview,
@@ -167,6 +168,9 @@ export const verificationRouter = router({
   history: adminProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => verificationHistory(ctx.db, input.userId)),
+
+  /** Every registered account, verified or not. */
+  accounts: adminProcedure.query(async ({ ctx }) => listAccounts(ctx.db)),
 
   /** Locums who are not yet verified, including those who never uploaded a document. */
   queueLocums: adminProcedure

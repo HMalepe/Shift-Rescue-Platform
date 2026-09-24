@@ -110,6 +110,30 @@ export default async function ProfilePage({
     redirect(`/profile?notice=${encodeURIComponent("Pharmacy profile saved.")}`);
   }
 
+  async function createPharmacy(formData: FormData) {
+    "use server";
+    const suburb = String(formData.get("suburb") ?? "").trim();
+    try {
+      await api.mutate("profile.createPharmacy", {
+        name: String(formData.get("name") ?? "").trim(),
+        addressLine: String(formData.get("addressLine") ?? "").trim(),
+        sapcPharmacyNumber: String(formData.get("sapcPharmacyNumber") ?? "").trim(),
+        area: String(formData.get("area") ?? "").trim(),
+        ...(suburb !== "" && { suburb }),
+      });
+    } catch (caught) {
+      const message = caught instanceof ApiError ? caught.message : "Could not add the pharmacy";
+      redirect(`/profile?error=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath("/profile");
+    redirect(
+      `/profile?notice=${encodeURIComponent(
+        "Pharmacy added. You can post shifts. An admin still checks the SAPC number.",
+      )}`,
+    );
+  }
+
   const locum =
     viewer.role === "locum" ? await api.query<LocumStatus | null>("verification.myStatus") : null;
   const pharmacies =
@@ -245,6 +269,54 @@ export default async function ProfilePage({
                 Save account
               </button>
             </form>
+
+            {pharmacies.length === 0 ? (
+              <form action={createPharmacy} className="card stack">
+                <strong>Add your pharmacy</strong>
+                <p className="dim" style={{ margin: 0 }}>
+                  This account is not linked to a pharmacy, so posting a shift is blocked until
+                  you add one.
+                </p>
+                <div className="field">
+                  <label htmlFor="pharmacyName">Pharmacy name</label>
+                  <input id="pharmacyName" name="name" required minLength={2} maxLength={200} />
+                </div>
+                <div className="field">
+                  <label htmlFor="addressLine">Address</label>
+                  <input id="addressLine" name="addressLine" required minLength={3} maxLength={500} />
+                </div>
+                <div className="field">
+                  <label htmlFor="suburb">Suburb</label>
+                  <input id="suburb" name="suburb" maxLength={120} />
+                </div>
+                <div className="field">
+                  <label htmlFor="sapcPharmacyNumber">Pharmacy SAPC number</label>
+                  <input
+                    id="sapcPharmacyNumber"
+                    name="sapcPharmacyNumber"
+                    required
+                    minLength={4}
+                    maxLength={32}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="area">Nearest area</label>
+                  <select id="area" name="area" required defaultValue="">
+                    <option value="" disabled>
+                      Select the closest area…
+                    </option>
+                    {PHARMACY_AREA_NAMES.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="submit" className="primary">
+                  Add pharmacy
+                </button>
+              </form>
+            ) : null}
 
             {pharmacies.map((pharmacy) => (
               <form key={pharmacy.id} action={savePharmacy} className="card stack">

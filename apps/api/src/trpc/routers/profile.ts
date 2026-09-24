@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { locumProfiles, pharmacies, pharmacyMembers, users } from "@locum/db";
-import { claimRegistrationNumber, findPharmacyArea } from "@locum/core";
+import { claimRegistrationNumber, findPharmacyArea, isUniqueViolation } from "@locum/core";
 import { router, locumProcedure, managerProcedure, protectedProcedure } from "../trpc";
 
 const coordinate = z.object({
@@ -318,5 +318,73 @@ export const profileRouter = router({
         .where(eq(pharmacies.id, input.pharmacyId));
 
       return { ok: true };
+    }),
+
+  /** A manager who registered without a pharmacy can add the first one here. */
+  createPharmacy: managerProcedure
+    .input(
+      z.object({
+        name: z.string().trim().min(2).max(200),
+        addressLine: z.string().trim().min(3).max(500),
+        suburb: z.string().trim().max(120).optional(),
+        sapcPharmacyNumber: z.string().trim().min(4).max(32),
+        area: z.string().trim().min(1).max(80),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const area = findPharmacyArea(input.area);
+      if (!area) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Select a valid area" });
+      }
+
+      return ctx.db.transaction(async (tx) => {
+        const [owner] = await tx
+          .select({ email: users.email })
+          .from(users)
+          .where(eq(users.id, ctx.user.id))
+          .limit(1);
+        const sapcPharmacyNumber = await claimRegistrationNumber(tx, {
+          email: owner!.email,
+          number: input.sapcPharmacyNumber,
+        });
+
+        const [existingPrimary] = await tx
+          .select({ id: pharmacyMembers.id })
+          .from(pharmacyMembers)
+          .where(and(eq(pharmacyMembers.userId, ctx.user.id), eq(pharmacyMembers.isPrimary, true)))
+          .limit(1);
+
+        let pharmacyId: string;
+        try {
+          const [pharmacy] = await tx
+            .insert(pharmacies)
+            .values({
+              name: input.name,
+              addressLine: input.addressLine,
+              ...(input.suburb !== undefined && input.suburb !== "" && { suburb: input.suburb }),
+              city: area.city,
+              sapcPharmacyNumber,
+              location: { lng: area.lng, lat: area.lat },
+            })
+            .returning({ id: pharmacies.id });
+          pharmacyId = pharmacy!.id;
+        } catch (error) {
+          if (isUniqueViolation(error, "pharmacies_sapc_key")) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "This registration number is already linked to another email",
+            });
+          }
+          throw error;
+        }
+
+        await tx.insert(pharmacyMembers).values({
+          pharmacyId,
+          userId: ctx.user.id,
+          isPrimary: existingPrimary === undefined,
+        });
+
+        return { pharmacyId };
+      });
     }),
 });

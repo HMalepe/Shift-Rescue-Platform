@@ -15,3 +15,4 @@ export * from "./matching/index";
 export * from "./pharmacy-areas";
 export * from "./pharmacy-verification";
 export * from "./locum-verification";
+export * from "./accounts";
