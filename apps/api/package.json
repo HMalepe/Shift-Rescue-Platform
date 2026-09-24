@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "build": "node ../../scripts/build-node-app.mjs src/main.ts dist/main.js",
+    "start": "node dist/main.js",
     "create-user": "tsx scripts/create-user.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -18,10 +19,12 @@
     "@locum/db": "workspace:*",
     "@locum/integrations": "workspace:*",
     "@locum/observability": "workspace:*",
+    "@node-rs/argon2": "^2.0.2",
     "@trpc/server": "^11.0.0",
     "drizzle-orm": "^0.38.4",
     "fastify": "^5.2.1",
     "fastify-plugin": "^6.0.0",
+    "postgres": "^3.4.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

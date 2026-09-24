@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "start": "tsx src/main.ts",
+    "build": "node ../../scripts/build-node-app.mjs src/main.ts dist/main.js",
+    "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "lint": "eslint src test --max-warnings=0"
@@ -13,10 +14,12 @@
   "dependencies": {
     "@locum/core": "workspace:*",
     "@locum/db": "workspace:*",
+    "@node-rs/argon2": "^2.0.2",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.38.4",
     "ioredis": "^5.4.2",
     "pino": "^9.6.0",
+    "postgres": "^3.4.5",
     "zod": "^3.24.1",
     "@locum/observability": "workspace:*",
     "@locum/integrations": "workspace:*"

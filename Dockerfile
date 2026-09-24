@@ -20,24 +20,32 @@
 # same Dockerfile natively for its own runtime, so no `--platform` override is
 # needed or wanted there.
 #
-# ## Why this ships TypeScript rather than compiled JavaScript
+# ## Compiled runtime, not tsx
 #
-# Both apps start with `tsx src/main.ts`, and none of the workspace packages
-# has a build step — `packages/core` only typechecks. So there is no compiled
-# output to copy, and a `--prod` install would drop `tsx` and leave an image
-# that cannot start.
+# This used to ship the whole TypeScript toolchain (tsx, typescript, vitest)
+# into the runtime image, because neither app had a build step and starting
+# from `tsx src/main.ts` was the only option. That tradeoff is resolved now:
+# apps/api and apps/worker each bundle to a single dist/main.js via
+# scripts/build-node-app.mjs (esbuild, Node 22 target, ESM), and this
+# Dockerfile is a genuine multi-stage build — `deps` and `build` see the full
+# devDependency tree, `prod-deps` installs production dependencies ONLY for
+# `@locum/api`/`@locum/worker` and their transitive graph, and `runtime`
+# copies just that plus the two dist/main.js files. tsx, typescript, vitest
+# and esbuild itself never reach the shipped image; neither does any `src/`
+# tree — the bundle is self-contained.
 #
-# The honest cost: this image carries devDependencies, including the whole
-# TypeScript toolchain and vitest. That is more bytes and more attack surface
-# than a compiled image needs. It is not a decision worth hiding, and the fix
-# is to add real build steps to the apps rather than to prune here — pruning
-# `tsx` is exactly what would break it.
-#
-# ## Not built or run here
-#
-# There is no Docker daemon in the environment this was written in, so this
-# Dockerfile has never been built and the image has never started. Treat it the
-# same way as infra/: reviewed, not verified.
+# Native modules — the one way this class of change breaks in a way `docker
+# build` succeeding does not catch — are never bundled. See
+# scripts/build-node-app.mjs's own header for the full external list and the
+# reasoning per package; the short version is that `@node-rs/argon2`,
+# `postgres`, `bullmq`, `ioredis`, `pino`, `drizzle-orm`, `fastify` and its
+# official plugins all stay real node_modules packages, resolved by Node
+# exactly as before, with apps/api and apps/worker's own package.json now
+# listing whichever of them their bundle actually imports directly (a
+# dependency that used to arrive transitively through `@locum/core`/
+# `@locum/db` is not resolvable from apps/api/dist/main.js's location once
+# bundled — pnpm only symlinks a package's OWN direct dependencies into its
+# node_modules, not a workspace sibling's).
 
 FROM node:22-bookworm-slim AS deps
 
@@ -75,6 +83,59 @@ COPY tools/devdata/package.json tools/devdata/
 # working example from Railway's own docs in hand, not another guess.
 RUN PNPM_HOME=/pnpm pnpm install --frozen-lockfile
 
+# --- build: compile apps/api and apps/worker to dist/main.js -----------------
+
+FROM deps AS build
+
+COPY scripts/build-node-app.mjs scripts/
+COPY apps/api apps/api
+COPY apps/worker apps/worker
+COPY packages/core packages/core
+COPY packages/db packages/db
+COPY packages/integrations packages/integrations
+COPY packages/observability packages/observability
+
+# turbo, not a bare `pnpm --filter ... build`, so `^build`'s dependsOn
+# ordering is real rather than assumed — see turbo.json. Neither app has a
+# workspace-package build dependency today (packages/core etc. only
+# typecheck; esbuild reads their TypeScript source directly through each
+# package's own `exports` map), so this is currently equivalent to running
+# each app's own build script in isolation — but "currently" is the
+# operative word, and turbo is what keeps that true if that ever changes
+# without anyone having to remember why.
+RUN pnpm exec turbo run build --filter=@locum/api --filter=@locum/worker
+
+# --- prod-deps: a production-only install, scoped to api + worker -----------
+
+FROM node:22-bookworm-slim AS prod-deps
+
+RUN corepack enable
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
+COPY apps/mobile/package.json apps/mobile/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+COPY packages/integrations/package.json packages/integrations/
+COPY packages/observability/package.json packages/observability/
+COPY tools/loadtest/package.json tools/loadtest/
+COPY tools/devdata/package.json tools/devdata/
+
+# `--prod` drops every devDependency across the whole resolved tree —
+# typescript, tsx, vitest, esbuild, drizzle-kit, eslint, all of it — and
+# `--filter=...` scopes the install to `@locum/api`/`@locum/worker` and
+# whatever they actually depend on, rather than also installing Next.js and
+# the mobile app's dependencies into an image that runs neither. This is the
+# entire size/attack-surface reduction the Dockerfile's own header used to
+# apologise for not having done.
+RUN PNPM_HOME=/pnpm pnpm install --prod --frozen-lockfile \
+    --filter=@locum/api... --filter=@locum/worker...
+
+# --- runtime -------------------------------------------------------------
+
 FROM node:22-bookworm-slim AS runtime
 
 RUN corepack enable
@@ -91,21 +152,36 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
-COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules
-COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
-COPY --from=deps /app/packages/integrations/node_modules ./packages/integrations/node_modules
-COPY --from=deps /app/packages/observability/node_modules ./packages/observability/node_modules
-
+# Manifests only — no package's `src/` reaches this stage at all, compiled or
+# not. `pnpm --filter @locum/api start` (what railway.json's
+# `deploy.startCommand` and infra/compute.tf's ECS `command` both actually
+# invoke) still needs the full workspace graph to resolve the filter, even
+# though the two apps it can target no longer need anything else from their
+# workspace siblings — see the header comment on why a bundled dist/main.js
+# has nothing left to import from `@locum/core` et al. by name.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
-COPY apps/api apps/api
-COPY apps/worker apps/worker
-COPY packages/core packages/core
-COPY packages/db packages/db
-COPY packages/integrations packages/integrations
-COPY packages/observability packages/observability
+COPY apps/api/package.json apps/api/
+COPY apps/worker/package.json apps/worker/
+COPY apps/web/package.json apps/web/
+COPY apps/mobile/package.json apps/mobile/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+COPY packages/integrations/package.json packages/integrations/
+COPY packages/observability/package.json packages/observability/
+COPY tools/loadtest/package.json tools/loadtest/
+COPY tools/devdata/package.json tools/devdata/
+
+# The production-only node_modules tree, and nothing else — no devtools, no
+# src.
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=prod-deps /app/apps/worker/node_modules ./apps/worker/node_modules
+
+# The compiled bundles. Each is a single file (plus a sourcemap, kept for
+# readable stack traces in error reports) — everything from
+# packages/core/db/integrations/observability is already inlined into it.
+COPY --from=build /app/apps/api/dist apps/api/dist
+COPY --from=build /app/apps/worker/dist apps/worker/dist
 
 # Non-root. The node image ships a `node` user; the application never needs to
 # write to its own directory, so ownership stays with root and the process
@@ -117,5 +193,6 @@ EXPOSE 3000
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
-# Overridden for the worker by the ECS task definition's `command`.
+# Overridden for the worker by the ECS task definition's `command`, and by
+# railway.worker.json's own `deploy.startCommand` on the Railway path.
 CMD ["pnpm", "--filter", "@locum/api", "start"]
