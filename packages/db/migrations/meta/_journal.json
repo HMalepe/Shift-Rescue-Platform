@@ -71,6 +71,13 @@
       "when": 1788722500000,
       "tag": "0009_admin_email_per_role",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788726000000,
+      "tag": "0010_one_registration_per_email",
+      "breakpoints": true
     }
   ]
 }

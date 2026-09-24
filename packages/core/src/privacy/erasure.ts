@@ -7,6 +7,7 @@ import {
   locumProfiles,
   messages,
   pharmacyMembers,
+  professionalRegistrations,
   reputationSnapshots,
   shiftOffers,
   ratings,
@@ -60,7 +61,12 @@ export async function eraseSubject(
 
   return db.transaction(async (tx) => {
     const [subject] = await tx
-      .select({ id: users.id, role: users.role, erasedAt: users.erasedAt })
+      .select({
+        id: users.id,
+        role: users.role,
+        email: users.email,
+        erasedAt: users.erasedAt,
+      })
       .from(users)
       .where(eq(users.id, subjectId))
       .limit(1);
@@ -273,6 +279,16 @@ export async function eraseSubject(
             verification: "rejected",
           })
           .where(eq(locumProfiles.userId, subjectId)),
+      ),
+    });
+
+    affected.push({
+      table: "professional_registrations",
+      action: "delete",
+      rows: count(
+        await tx
+          .delete(professionalRegistrations)
+          .where(sql`lower(${professionalRegistrations.email}) = ${subject.email.toLowerCase()}`),
       ),
     });
 

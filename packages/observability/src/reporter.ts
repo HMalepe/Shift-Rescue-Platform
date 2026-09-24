@@ -96,6 +96,8 @@ const ROUTINE_DOMAIN_CODES: ReadonlySet<string> = new Set([
   "CHARGE_NOT_FOUND",
   "ADMIN_EXISTS",
   "ADMIN_NOT_FOUND",
+  "EMAIL_TAKEN",
+  "SAPC_NUMBER_TAKEN",
 ]);
 
 /**

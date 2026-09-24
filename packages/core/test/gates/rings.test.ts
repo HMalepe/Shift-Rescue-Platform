@@ -382,7 +382,7 @@ describe("GATE matching.ring_expansion — rings are an escalation", () => {
 
     await db
       .insert(s.pharmacyMembers)
-      .values({ pharmacyId: densePharmacy!.id, userId: managerId, isPrimary: true });
+      .values({ pharmacyId: densePharmacy!.id, userId: managerId, isPrimary: false });
 
     const [denseShift] = await db
       .insert(s.shifts)

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { locumProfiles, pharmacies, pharmacyMembers, users } from "@locum/db";
+import { claimRegistrationNumber } from "@locum/core";
 import { router, locumProcedure, managerProcedure, protectedProcedure } from "../trpc";
 
 const coordinate = z.object({
@@ -121,34 +122,54 @@ export const profileRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Profile not found" });
       }
 
-      /*
-       * Changing the SAPC number after verification resets it.
-       *
-       * The verification attests to a specific registration number that a
-       * human checked. Letting a verified locum silently swap it for another
-       * would turn the platform's central promise into something they can
-       * edit — which is the whole attack, and it needs no malware or stolen
-       * credentials.
-       */
-      const resetsVerification =
-        input.sapcNumber !== undefined && existing.verification === "verified";
+      const result = await ctx.db.transaction(async (tx) => {
+        let sapcNumber: string | undefined;
+        if (input.sapcNumber !== undefined) {
+          const [owner] = await tx
+            .select({ email: users.email })
+            .from(users)
+            .where(eq(users.id, ctx.user.id))
+            .limit(1);
+          sapcNumber = await claimRegistrationNumber(tx, {
+            email: owner!.email,
+            number: input.sapcNumber,
+            replace: true,
+          });
+        }
 
-      await ctx.db
-        .update(locumProfiles)
-        .set({
-          ...(input.baseLocation !== undefined && { baseLocation: input.baseLocation }),
-          ...(input.maxTravelKm !== undefined && { maxTravelKm: input.maxTravelKm }),
-          ...(input.sapcNumber !== undefined && { sapcNumber: input.sapcNumber }),
-          ...(resetsVerification && {
-            verification: "complete_unverified" as const,
-            verifiedAt: null,
-            verifiedBy: null,
-          }),
-          updatedAt: new Date(),
-        })
-        .where(eq(locumProfiles.userId, ctx.user.id));
+        /*
+         * Changing the SAPC number after verification resets it.
+         *
+         * The verification attests to a specific registration number that a
+         * human checked. Letting a verified locum silently swap it for another
+         * would turn the platform's central promise into something they can
+         * edit — which is the whole attack, and it needs no malware or stolen
+         * credentials.
+         */
+        const resetsVerification =
+          input.sapcNumber !== undefined &&
+          sapcNumber !== undefined &&
+          existing.verification === "verified";
 
-      return { ok: true, verificationReset: resetsVerification };
+        await tx
+          .update(locumProfiles)
+          .set({
+            ...(input.baseLocation !== undefined && { baseLocation: input.baseLocation }),
+            ...(input.maxTravelKm !== undefined && { maxTravelKm: input.maxTravelKm }),
+            ...(sapcNumber !== undefined && { sapcNumber }),
+            ...(resetsVerification && {
+              verification: "complete_unverified" as const,
+              verifiedAt: null,
+              verifiedBy: null,
+            }),
+            updatedAt: new Date(),
+          })
+          .where(eq(locumProfiles.userId, ctx.user.id));
+
+        return { ok: true as const, verificationReset: resetsVerification };
+      });
+
+      return result;
     }),
 
   /**

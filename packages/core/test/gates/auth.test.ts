@@ -1,5 +1,5 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import * as s from "@locum/db/schema";
 import {
   changePassword,
@@ -77,6 +77,21 @@ async function createUser(options: {
 afterEach(async () => {
   const ids = createdUserIds.splice(0);
   if (ids.length > 0) {
+    const owners = await db
+      .select({ email: s.users.email })
+      .from(s.users)
+      .where(inArray(s.users.id, ids));
+    const emails = owners.map((row) => row.email.toLowerCase());
+    if (emails.length > 0) {
+      await db
+        .delete(s.professionalRegistrations)
+        .where(
+          sql`lower(${s.professionalRegistrations.email}) in (${sql.join(
+            emails.map((email) => sql`${email}`),
+            sql`, `,
+          )})`,
+        );
+    }
     await db.delete(s.sessions).where(inArray(s.sessions.userId, ids));
     await db.delete(s.users).where(inArray(s.users.id, ids));
   }
@@ -515,5 +530,118 @@ describe("GATE security.auth — self-service registration", () => {
     // pass verification.
     const rows = await db.select().from(s.users).where(eq(s.users.email, secondEmail));
     expect(rows).toHaveLength(0);
+  });
+
+  function managerInput(email: string, sapcPharmacyNumber: string) {
+    return {
+      role: "manager" as const,
+      email,
+      password: "correct horse battery staple",
+      fullName: "Manager",
+      pharmacy: {
+        name: "Test Pharmacy",
+        addressLine: "1 Test Street",
+        city: "Johannesburg",
+        sapcPharmacyNumber,
+        location: JOHANNESBURG,
+      },
+    };
+  }
+
+  it("rejects a second pharmacy manager with the same email", async () => {
+    const email = `register-mgr-dup-${unique()}@test.invalid`;
+    const number = `PH${unique()}`;
+    const first = await register(db, managerInput(email, number));
+    createdUserIds.push(first.userId);
+    const [membership] = await db
+      .select({ pharmacyId: s.pharmacyMembers.pharmacyId })
+      .from(s.pharmacyMembers)
+      .where(eq(s.pharmacyMembers.userId, first.userId));
+    createdPharmacyIds.push(membership!.pharmacyId);
+
+    await expect(register(db, managerInput(email, number))).rejects.toMatchObject({
+      code: "EMAIL_TAKEN",
+    });
+  });
+
+  it("rejects a pharmacy registration number already used by another pharmacy", async () => {
+    const number = `PH${unique()}`;
+    const first = await register(db, managerInput(`mgr-a-${unique()}@test.invalid`, number));
+    createdUserIds.push(first.userId);
+    const [membership] = await db
+      .select({ pharmacyId: s.pharmacyMembers.pharmacyId })
+      .from(s.pharmacyMembers)
+      .where(eq(s.pharmacyMembers.userId, first.userId));
+    createdPharmacyIds.push(membership!.pharmacyId);
+
+    await expect(
+      register(db, managerInput(`mgr-b-${unique()}@test.invalid`, number.toLowerCase())),
+    ).rejects.toMatchObject({ code: "SAPC_NUMBER_TAKEN" });
+  });
+
+  it("rejects a locum registration number reused by another email's pharmacy", async () => {
+    const number = `P${unique()}`;
+    const locum = await register(db, {
+      role: "locum",
+      email: `locum-shared-num-${unique()}@test.invalid`,
+      password: "correct horse battery staple",
+      fullName: "Locum",
+      sapcNumber: number,
+    });
+    createdUserIds.push(locum.userId);
+
+    await expect(
+      register(db, managerInput(`other-${unique()}@test.invalid`, number.toLowerCase())),
+    ).rejects.toMatchObject({ code: "SAPC_NUMBER_TAKEN" });
+  });
+
+  it("lets one email use the same registration number as both locum and manager", async () => {
+    const email = `both-${unique()}@test.invalid`;
+    const number = `p${unique()}`;
+    const locum = await register(db, {
+      role: "locum",
+      email,
+      password: "correct horse battery staple",
+      fullName: "Both",
+      sapcNumber: number,
+    });
+    createdUserIds.push(locum.userId);
+
+    const manager = await register(db, managerInput(email, number.toUpperCase()));
+    createdUserIds.push(manager.userId);
+    const [membership] = await db
+      .select({ pharmacyId: s.pharmacyMembers.pharmacyId })
+      .from(s.pharmacyMembers)
+      .where(eq(s.pharmacyMembers.userId, manager.userId));
+    createdPharmacyIds.push(membership!.pharmacyId);
+
+    const [profile] = await db
+      .select({ sapc: s.locumProfiles.sapcNumber })
+      .from(s.locumProfiles)
+      .where(eq(s.locumProfiles.userId, locum.userId));
+    expect(profile?.sapc).toBe(number.toUpperCase());
+
+    const rows = await db
+      .select()
+      .from(s.professionalRegistrations)
+      .where(eq(s.professionalRegistrations.email, email));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.number).toBe(number.toUpperCase());
+  });
+
+  it("rejects a second registration number for an email that already has one", async () => {
+    const email = `one-number-${unique()}@test.invalid`;
+    const locum = await register(db, {
+      role: "locum",
+      email,
+      password: "correct horse battery staple",
+      fullName: "One",
+      sapcNumber: `A${unique()}`,
+    });
+    createdUserIds.push(locum.userId);
+
+    await expect(
+      register(db, managerInput(email, `B${unique()}`)),
+    ).rejects.toMatchObject({ code: "SAPC_NUMBER_TAKEN" });
   });
 });
