@@ -93,7 +93,19 @@ Two separate paths, both now wired end to end — verify each once.
 - [ ] Payfast merchant dashboard shows the sandbox transaction.
 - [ ] `worker` logs: no signature-mismatch or auth error.
 
-## 7. "No CORS errors" — nothing to check, structurally
+## 7. Alerting — confirm a drill actually pages someone
+
+§0.1's exit criterion, restated: a deliberately broken endpoint on staging
+must produce a real alert before this counts as checked, not just "the code
+looks right."
+
+- [ ] `DRILL_SECRET=<staging secret> ./scripts/fire-drill.sh https://<staging-api>.up.railway.app`
+      (or `make drill DRILL_TARGET=... DRILL_SECRET=...`) exits 0.
+- [ ] The alert actually arrived at the configured `ALERT_WEBHOOK_URL` sink —
+      the script exiting 0 only proves the API fired and replied `drill_fired`,
+      not that delivery succeeded on the receiving end.
+
+## 8. "No CORS errors" — nothing to check, structurally
 
 CORS governs browser-to-server calls only. The browser here only ever talks
 to Vercel; every other call (Postgres, Redis, Twilio, Payfast) is

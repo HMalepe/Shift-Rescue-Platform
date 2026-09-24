@@ -117,13 +117,12 @@ verify: ## §0.4 — full verification run; non-zero exit on any failure
 drill: ## §0.1 — fire the deliberately broken endpoint and check an alert goes out
 	# Phase 0's exit criterion. Requires DRILL_ENABLED=true and DRILL_SECRET on
 	# the target, which production refuses to boot with — so this only ever
-	# runs against staging or local.
+	# runs against staging or local. Delegates to scripts/fire-drill.sh, which
+	# resolves the drill path from @locum/observability's own DRILL_PATH
+	# export instead of the hardcoded "/__drill/boom" this recipe used to
+	# inline — see that script's header for the full reasoning.
 	@test -n "$(DRILL_SECRET)" || { echo "set DRILL_SECRET (and DRILL_ENABLED=true on the target)"; exit 1; }
-	@echo "==> firing drill at $(DRILL_TARGET)"
-	@curl -sS -o /dev/null -w "%{http_code}\n" -X POST \
-		-H "x-drill-secret: $(DRILL_SECRET)" \
-		"$(DRILL_TARGET)/__drill/boom" \
-		| grep -q 500 && echo "drill fired; now confirm a human was paged (§15: the gate is that a phone buzzes)"
+	@DRILL_SECRET="$(DRILL_SECRET)" bash scripts/fire-drill.sh "$(DRILL_TARGET)"
 
 .PHONY: loadtest
 loadtest: ## §0.3/§12.3 — prepare fixtures, run k6, verify the invariant
