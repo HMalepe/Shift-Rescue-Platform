@@ -198,6 +198,33 @@ the next piece of work, not something this guide has solved. Until then, run
    → Custom Domain, which only then needs a DNS CNAME record — no ACM
    certificate wait, Railway issues it automatically.
 
+4. **Smoke-test the real document pipeline once.** §5/§10/§12.1's document
+   flow — S3/R2 storage, the real ClamAV scan, signed-URL retrieval — has
+   never run against live vendors; every automated test in this repo runs it
+   against the in-memory store and stub scanner instead, because that is what
+   CI can reach. `tools/devdata/src/smoke-uploads.ts` runs the real thing:
+   uploads an EICAR file and confirms the real scanner rejects it and nothing
+   is stored, then uploads a small clean file, fetches it back through a real
+   signed URL, and confirms the bytes round-trip and the object is not
+   publicly readable. Run it with the same `DATABASE_URL`/`S3_*`/`AWS_*`/
+   `CLAMD_HOST`/`CLAMD_PORT` values the `api` service is running with —
+   `railway variables --service api` prints them, or reuse whatever you set
+   in step 4's env block above:
+   ```sh
+   DATABASE_URL=... S3_BUCKET=... S3_REGION=... S3_SSE_MODE=... \
+   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
+   CLAMD_HOST=... CLAMD_PORT=3310 \
+     pnpm --filter @locum/devdata smoke-uploads
+   ```
+   Prints PASS/FAIL per check and exits non-zero on any failure. It refuses
+   to run at all with an incomplete environment — there is no fallback to the
+   in-memory store or the stub scanner here, unlike `apps/api/src/main.ts`,
+   because a smoke test that silently tested the stubs and reported PASS
+   would be worse than not running it. Not part of `make verify`: it needs a
+   real bucket and a real clamd reachable over TCP, and creates/deletes its
+   own throwaway user and document rows against whatever `DATABASE_URL` it is
+   given — point it at staging, not a shared database anyone else is using.
+
 ## What is genuinely still missing
 
 Same list as the AWS path, because these are external/human blockers, not

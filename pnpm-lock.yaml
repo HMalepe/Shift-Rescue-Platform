@@ -252,6 +252,9 @@ importers:
       '@locum/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@locum/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       drizzle-orm:
         specifier: ^0.38.4
         version: 0.38.4(@types/react@19.2.18)(postgres@3.4.9)(react@19.2.8)
