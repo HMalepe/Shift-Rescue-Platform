@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { LightMyRequestResponse } from "fastify";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import * as s from "@locum/db/schema";
 import {
   EICAR_TEST_STRING,
@@ -49,6 +49,19 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (userIds.length > 0) {
+    const owners = await server.db
+      .select({ email: s.users.email })
+      .from(s.users)
+      .where(inArray(s.users.id, userIds));
+    const emails = owners.map((row) => row.email.toLowerCase());
+    if (emails.length > 0) {
+      await server.db.delete(s.professionalRegistrations).where(
+        sql`lower(${s.professionalRegistrations.email}) in (${sql.join(
+          emails.map((email) => sql`${email}`),
+          sql`, `,
+        )})`,
+      );
+    }
     await server.db.delete(s.auditLog).where(inArray(s.auditLog.subjectId, userIds));
     await server.db.delete(s.auditLog).where(inArray(s.auditLog.actorId, userIds));
     await server.db.delete(s.documents).where(inArray(s.documents.userId, userIds));

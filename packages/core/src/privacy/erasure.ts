@@ -7,6 +7,7 @@ import {
   locumProfiles,
   messages,
   pharmacyMembers,
+  professionalRegistrations,
   reputationSnapshots,
   shiftOffers,
   ratings,
@@ -275,6 +276,23 @@ export async function eraseSubject(
           .where(eq(locumProfiles.userId, subjectId)),
       ),
     });
+
+    const [subject] = await tx
+      .select({ email: users.email })
+      .from(users)
+      .where(eq(users.id, subjectId))
+      .limit(1);
+    if (subject) {
+      affected.push({
+        table: "professional_registrations",
+        action: "delete",
+        rows: count(
+          await tx
+            .delete(professionalRegistrations)
+            .where(sql`lower(${professionalRegistrations.email}) = ${subject.email.toLowerCase()}`),
+        ),
+      });
+    }
 
     /*
      * The anchor row. Identity is overwritten with values that cannot collide

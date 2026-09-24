@@ -138,6 +138,9 @@ export const pharmacies = pgTable(
     // §15 gates this with EXPLAIN ANALYZE against seeded data.
     index("pharmacies_location_gist").using("gist", table.location),
     index("pharmacies_city_idx").on(table.city),
+    uniqueIndex("pharmacies_sapc_key")
+      .on(sql`lower(${table.sapcPharmacyNumber})`)
+      .where(sql`${table.sapcPharmacyNumber} is not null`),
   ],
 );
 
@@ -163,6 +166,9 @@ export const pharmacyMembers = pgTable(
   },
   (table) => [
     uniqueIndex("pharmacy_members_unique").on(table.pharmacyId, table.userId),
+    uniqueIndex("pharmacy_members_one_primary")
+      .on(table.userId)
+      .where(sql`${table.isPrimary} = true`),
     index("pharmacy_members_user_idx").on(table.userId),
   ],
 );
@@ -225,8 +231,24 @@ export const locumProfiles = pgTable(
     ),
     index("locum_profiles_verification_idx").on(table.verification),
     uniqueIndex("locum_profiles_sapc_key")
-      .on(table.sapcNumber)
+      .on(sql`lower(${table.sapcNumber})`)
       .where(sql`${table.sapcNumber} is not null`),
+  ],
+);
+
+/**
+ * One professional registration number belongs to one email, and one email
+ * has one number, whether that email is a locum, a pharmacy manager, or both.
+ * Admin accounts are not registered here.
+ */
+export const professionalRegistrations = pgTable(
+  "professional_registrations",
+  {
+    number: varchar("number", { length: 32 }).primaryKey(),
+    email: varchar("email", { length: 320 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("professional_registrations_email_key").on(sql`lower(${table.email})`),
   ],
 );
 

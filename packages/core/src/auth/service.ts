@@ -5,6 +5,7 @@ import {
   locumProfiles,
   pharmacies,
   pharmacyMembers,
+  professionalRegistrations,
   sessions,
   users,
   type Database,
@@ -113,6 +114,10 @@ export async function register(
 
   return db.transaction(async (tx) => {
     const passwordHash = await hashPassword(input.password);
+    const registrationNumber = await claimRegistrationNumber(tx, {
+      email,
+      number: input.role === "locum" ? input.sapcNumber : input.pharmacy.sapcPharmacyNumber,
+    });
 
     let userId: string;
     try {
@@ -129,7 +134,12 @@ export async function register(
       userId = created!.id;
     } catch (error) {
       if (isUniqueViolation(error, "users_email_role_key")) {
-        throw new DomainError("EMAIL_TAKEN", "An account with this email already exists");
+        throw new DomainError(
+          "EMAIL_TAKEN",
+          input.role === "locum"
+            ? "A locum account already uses this email"
+            : "A pharmacy manager account already uses this email",
+        );
       }
       throw error;
     }
@@ -138,36 +148,48 @@ export async function register(
       try {
         await tx.insert(locumProfiles).values({
           userId,
-          sapcNumber: input.sapcNumber,
+          sapcNumber: registrationNumber,
         });
       } catch (error) {
         if (isUniqueViolation(error, "locum_profiles_sapc_key")) {
           throw new DomainError(
             "SAPC_NUMBER_TAKEN",
-            "This SAPC registration number is already on file for another account",
+            "This registration number is already linked to another email",
           );
         }
         throw error;
       }
     } else {
-      const [pharmacy] = await tx
-        .insert(pharmacies)
-        .values({
-          name: input.pharmacy.name,
-          addressLine: input.pharmacy.addressLine,
-          ...(input.pharmacy.suburb !== undefined && { suburb: input.pharmacy.suburb }),
-          city: input.pharmacy.city,
-          ...(input.pharmacy.province !== undefined && { province: input.pharmacy.province }),
-          ...(input.pharmacy.postalCode !== undefined && {
-            postalCode: input.pharmacy.postalCode,
-          }),
-          sapcPharmacyNumber: input.pharmacy.sapcPharmacyNumber,
-          location: input.pharmacy.location,
-        })
-        .returning({ id: pharmacies.id });
+      let pharmacyId: string;
+      try {
+        const [pharmacy] = await tx
+          .insert(pharmacies)
+          .values({
+            name: input.pharmacy.name,
+            addressLine: input.pharmacy.addressLine,
+            ...(input.pharmacy.suburb !== undefined && { suburb: input.pharmacy.suburb }),
+            city: input.pharmacy.city,
+            ...(input.pharmacy.province !== undefined && { province: input.pharmacy.province }),
+            ...(input.pharmacy.postalCode !== undefined && {
+              postalCode: input.pharmacy.postalCode,
+            }),
+            sapcPharmacyNumber: registrationNumber,
+            location: input.pharmacy.location,
+          })
+          .returning({ id: pharmacies.id });
+        pharmacyId = pharmacy!.id;
+      } catch (error) {
+        if (isUniqueViolation(error, "pharmacies_sapc_key")) {
+          throw new DomainError(
+            "SAPC_NUMBER_TAKEN",
+            "This registration number is already linked to another email",
+          );
+        }
+        throw error;
+      }
 
       await tx.insert(pharmacyMembers).values({
-        pharmacyId: pharmacy!.id,
+        pharmacyId,
         userId,
         isPrimary: true,
       });
@@ -175,6 +197,150 @@ export async function register(
 
     return { userId };
   });
+}
+
+/** Uppercase, so "p12345" and "P12345" are the same registration number. */
+export function normaliseRegistrationNumber(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+/**
+ * Binds a registration number to an email.
+ *
+ * The number can belong to only one email, and the email can hold only one
+ * number. A locum and a pharmacy manager who share an email therefore share
+ * that number. A second number on that email, or the same number on a
+ * different email, is refused.
+ *
+ * `replace` lets a locum change the number they already hold. The previous
+ * binding is released. A pharmacy on the same email that still uses a
+ * different number still blocks the change.
+ */
+export async function claimRegistrationNumber(
+  db: Executor,
+  input: { readonly email: string; readonly number: string; readonly replace?: boolean },
+): Promise<string> {
+  const email = input.email.trim().toLowerCase();
+  const number = normaliseRegistrationNumber(input.number);
+
+  const [byNumber] = await db
+    .select({ email: professionalRegistrations.email, number: professionalRegistrations.number })
+    .from(professionalRegistrations)
+    .where(eq(professionalRegistrations.number, number))
+    .limit(1);
+  const [byEmail] = await db
+    .select({ email: professionalRegistrations.email, number: professionalRegistrations.number })
+    .from(professionalRegistrations)
+    .where(sql`lower(${professionalRegistrations.email}) = ${email}`)
+    .limit(1);
+
+  const sameEmail = (value: string) => value.trim().toLowerCase() === email;
+
+  const locumHolders = await db
+    .select({ email: users.email, number: locumProfiles.sapcNumber })
+    .from(locumProfiles)
+    .innerJoin(users, eq(users.id, locumProfiles.userId))
+    .where(sql`lower(${locumProfiles.sapcNumber}) = ${number.toLowerCase()}`);
+  const pharmacyHolders = await db
+    .select({ email: users.email, number: pharmacies.sapcPharmacyNumber })
+    .from(pharmacies)
+    .innerJoin(
+      pharmacyMembers,
+      and(eq(pharmacyMembers.pharmacyId, pharmacies.id), eq(pharmacyMembers.isPrimary, true)),
+    )
+    .innerJoin(users, eq(users.id, pharmacyMembers.userId))
+    .where(sql`lower(${pharmacies.sapcPharmacyNumber}) = ${number.toLowerCase()}`);
+
+  for (const holder of [...locumHolders, ...pharmacyHolders]) {
+    if (holder.email && !sameEmail(holder.email)) {
+      throw new DomainError(
+        "SAPC_NUMBER_TAKEN",
+        "This registration number is already linked to another email",
+      );
+    }
+  }
+
+  const ownLocums = await db
+    .select({ number: locumProfiles.sapcNumber })
+    .from(locumProfiles)
+    .innerJoin(users, eq(users.id, locumProfiles.userId))
+    .where(sql`lower(${users.email}) = ${email}`);
+  const ownPharmacies = await db
+    .select({ number: pharmacies.sapcPharmacyNumber })
+    .from(pharmacies)
+    .innerJoin(
+      pharmacyMembers,
+      and(eq(pharmacyMembers.pharmacyId, pharmacies.id), eq(pharmacyMembers.isPrimary, true)),
+    )
+    .innerJoin(users, eq(users.id, pharmacyMembers.userId))
+    .where(sql`lower(${users.email}) = ${email}`);
+
+  const pharmacyNumbers = ownPharmacies
+    .map((row) => row.number)
+    .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+    .map((value) => normaliseRegistrationNumber(value));
+  const locumNumbers = ownLocums
+    .map((row) => row.number)
+    .filter((value): value is string => typeof value === "string" && value.trim() !== "")
+    .map((value) => normaliseRegistrationNumber(value));
+
+  const pharmacyConflict = pharmacyNumbers.some((value) => value !== number);
+  const keepingOwnLocumNumber = locumNumbers.some((value) => value === number);
+  const keepsADifferentNumber =
+    (pharmacyConflict && !(input.replace === true && keepingOwnLocumNumber)) ||
+    (!input.replace && locumNumbers.some((value) => value !== number)) ||
+    (!input.replace && byEmail !== undefined && byEmail.number !== number);
+
+  if (keepsADifferentNumber) {
+    throw new DomainError(
+      "SAPC_NUMBER_TAKEN",
+      "This email is already linked to a different registration number",
+    );
+  }
+
+  if (byNumber && !sameEmail(byNumber.email)) {
+    throw new DomainError(
+      "SAPC_NUMBER_TAKEN",
+      "This registration number is already linked to another email",
+    );
+  }
+
+  if (input.replace === true && byEmail && byEmail.number !== number) {
+    await db
+      .delete(professionalRegistrations)
+      .where(eq(professionalRegistrations.number, byEmail.number));
+    try {
+      await db.insert(professionalRegistrations).values({ number, email });
+    } catch (error) {
+      if (
+        isUniqueViolation(error, "professional_registrations_pkey") ||
+        isUniqueViolation(error, "professional_registrations_email_key")
+      ) {
+        throw new DomainError(
+          "SAPC_NUMBER_TAKEN",
+          "This registration number is already linked to another email",
+        );
+      }
+      throw error;
+    }
+  } else if (!byNumber && !byEmail) {
+    try {
+      await db.insert(professionalRegistrations).values({ number, email });
+    } catch (error) {
+      if (
+        isUniqueViolation(error, "professional_registrations_pkey") ||
+        isUniqueViolation(error, "professional_registrations_email_key")
+      ) {
+        throw new DomainError(
+          "SAPC_NUMBER_TAKEN",
+          "This registration number is already linked to another email",
+        );
+      }
+      throw error;
+    }
+  }
+
+  return number;
 }
 
 export interface BootstrapAdminResult {
