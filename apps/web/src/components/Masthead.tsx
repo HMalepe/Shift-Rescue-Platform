@@ -93,6 +93,13 @@ export function Masthead({ role }: { role: Role }) {
               </Link>
             );
           })}
+          {/* §11.4 — the WhatsApp opt-out. Reachable from every page for the
+              same reason /privacy is: a right behind a support email is a
+              right most people never exercise, and this number is send-only,
+              so a web link is the only opt-out that exists. */}
+          <Link href="/settings" onClick={() => setOpen(false)}>
+            Notifications
+          </Link>
           {/* §10 — reachable from every page, for every role. A privacy
               right behind a support email is a right most people never
               exercise. */}

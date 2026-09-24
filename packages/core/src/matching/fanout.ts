@@ -33,6 +33,8 @@ import {
 
 export interface FanOutDeps extends SendDeps {
   readonly now?: () => Date;
+  /** Built into the WhatsApp offer as a link straight to the shift. */
+  readonly dashboardBaseUrl: string;
 }
 
 export interface FanOutResult {
@@ -153,6 +155,7 @@ export async function fanOutRing(
         shift.pharmacySuburb ?? "",
         formatShiftStart(shift.startsAt),
         String(candidate.distanceKm),
+        `${deps.dashboardBaseUrl}/shifts/${input.shiftId}`,
       ],
     });
 

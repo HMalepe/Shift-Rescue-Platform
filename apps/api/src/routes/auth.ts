@@ -262,7 +262,11 @@ export function registerAuthRoutes(
       }
 
       try {
-        const updated = await setAdminPassword(db, parsed.data);
+        const updated = await setAdminPassword(db, {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          ...(parsed.data.fullName !== undefined && { fullName: parsed.data.fullName }),
+        });
         return reply.code(200).send({ email: updated.email });
       } catch (error) {
         return sendDomainError(reply, error, request.log);

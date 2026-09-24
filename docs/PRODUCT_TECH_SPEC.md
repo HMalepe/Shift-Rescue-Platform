@@ -130,6 +130,45 @@ already-verified entity:
   don't transfer, since they belong to a different sender/use case; typically hours to 48h
   unless a template reads as vague or promotional
 
+**ADDENDUM — decision reversed for MVP:** the product ships on the *existing* booking-agent
+number instead. Deliberate, not a lapse of the above — the number is already a
+Meta-approved, verified sender on this account, which removes the sender-registration and
+display-name-approval steps above entirely (both E-blocked, days-to-weeks in the worst
+case). New templates for Locum Planner's own message types are still needed and still
+Meta-reviewed either way, so reusing the sender costs nothing there — it only removes the
+steps that are unique to a *new* sender.
+
+The two costs the original guidance named are accepted, not solved, and both are
+narrowed by the integration shape rather than by the number itself:
+
+- **Conflated conversation context.** Still true in principle, but Locum Planner is
+  send-only on this number — see below — so there is no Locum Planner *reply* to
+  conflate with the other bot's conversation. The only mixing is a WhatsApp thread that
+  contains both an unrelated booking-agent exchange and a Locum Planner notification,
+  which is a UX cost users bear, not a routing bug.
+- **Analytics can't separate cleanly per product.** Still true. `whatsapp_message_log`
+  (§11.7) is Locum Planner's own ledger regardless of shared sender, so Locum Planner's
+  own spend/delivery numbers (§11.6, `ops.dashboard`) are unaffected — but Twilio
+  console-level, cross-product numbers stay merged. Accepted as an MVP tradeoff.
+
+**Send-only, by design, not by gap:** Locum Planner never receives inbound WhatsApp
+messages on this number. The other bot's inbound webhook is untouched — Twilio routes
+inbound to one URL per sender, and that URL stays whatever the other bot already has
+configured. Locum Planner only needs outbound send (its own Twilio API calls) and its own
+delivery-status callback (§11.7), which Twilio delivers per-message via a URL Locum
+Planner sets on each send — a different mechanism from the sender-level inbound webhook,
+so the two do not collide.
+
+This has one real consequence for §11.4: **WhatsApp-native STOP-by-reply does not work**
+for Locum Planner, because a "STOP" reply is inbound, and inbound on this number goes to
+the other bot, not to Locum Planner. Opt-out is a web link instead (a
+`setWhatsappConsent` toggle reachable from the notification itself and from the
+dashboard), consistent with the rest of this product's UX — every notification is a link
+the recipient clicks to act, not a WhatsApp reply. If a two-way, WhatsApp-native flow is
+ever needed later, closing this gap requires either a genuinely separate sender (the
+original plan above) or the other bot's webhook forwarding STOP/START keywords to Locum
+Planner — both out of scope for this decision.
+
 ### 11.2 Template Categorization
 
 Every proactive (business-initiated) message must be submitted to Meta as an approved

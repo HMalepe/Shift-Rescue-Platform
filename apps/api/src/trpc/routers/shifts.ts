@@ -77,7 +77,7 @@ export const shiftsRouter = router({
 
       return startLookingForLocum(
         ctx.db,
-        { sender: ctx.whatsappSender },
+        { sender: ctx.whatsappSender, dashboardBaseUrl: ctx.config.DASHBOARD_BASE_URL },
         { shiftId: input.shiftId },
       );
     }),

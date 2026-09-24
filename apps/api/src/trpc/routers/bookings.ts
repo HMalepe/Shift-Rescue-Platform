@@ -161,7 +161,11 @@ export const bookingsRouter = router({
           {
             type: "booking_confirmed",
             userId: result.locumId,
-            variables: [details.pharmacyName, formatShiftStart(details.startsAt)],
+            variables: [
+              details.pharmacyName,
+              formatShiftStart(details.startsAt),
+              `${ctx.config.DASHBOARD_BASE_URL}/bookings/${result.bookingId}`,
+            ],
           },
         );
       }

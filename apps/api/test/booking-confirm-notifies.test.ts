@@ -143,7 +143,11 @@ describe("GATE product.messaging — booking confirmation notifies the locum", (
     expect(response.statusCode).toBe(200);
     expect(sender.sent).toHaveLength(1);
     expect(sender.sent[0]!.templateName).toBe("booking_confirmed_v1");
-    expect(sender.sent[0]!.variables).toEqual(["Parktown Pharmacy", expect.any(String)]);
+    expect(sender.sent[0]!.variables).toEqual([
+      "Parktown Pharmacy",
+      expect.any(String),
+      expect.stringContaining(`/bookings/${booking!.id}`),
+    ]);
 
     const [logged] = await server.db
       .select({ templateType: s.whatsappMessageLog.templateType, status: s.whatsappMessageLog.status })
