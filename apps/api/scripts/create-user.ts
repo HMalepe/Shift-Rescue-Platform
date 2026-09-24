@@ -1,11 +1,12 @@
 /**
  * Bootstraps a single user directly in the database.
  *
- * There is no self-service signup endpoint (apps/api/src/routes/auth.ts only
- * has login/refresh/logout) — accounts are provisioned by a pharmacy's own
- * manager workflow, which is not built yet. Until then, this is how the
- * first account(s) get created, including in production, where
- * packages/db/src/seed is deliberately blocked from running at all.
+ * Prefer creating the first admin in the browser: set ADMIN_EMAIL and
+ * ADMIN_PASSWORD on Vercel and open /setup. This script remains for extra
+ * accounts.
+ *
+ * There used to be no self-service locum/manager signup; that path exists now
+ * at /auth/register. Admin still cannot self-serve except via /setup once.
  *
  * Usage (from repo root):
  *   DATABASE_URL=... EMAIL=you@example.com PASSWORD=... FULL_NAME="Your Name" ROLE=manager \

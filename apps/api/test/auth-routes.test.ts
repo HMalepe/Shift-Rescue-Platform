@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import * as s from "@locum/db/schema";
 import { hashPassword } from "@locum/core";
 import { buildServer, type BuiltServer } from "../src/server";
@@ -164,5 +164,49 @@ describe("GATE security.auth_rate_limit", () => {
     // Both 204: reporting "already logged out" would be an oracle.
     expect(first.statusCode).toBe(204);
     expect(second.statusCode).toBe(204);
+  });
+
+  it("bootstraps the first admin once", async () => {
+    const email = `admin-boot-${Date.now()}-${Math.random().toString(36).slice(2)}@test.invalid`;
+
+    const created = await server.app.inject({
+      method: "POST",
+      url: "/auth/bootstrap-admin",
+      payload: {
+        email,
+        password: "s3cure-password!",
+        fullName: "Admin Person",
+      },
+    });
+
+    if (created.statusCode === 409) {
+      expect(created.json()).toMatchObject({ error: "ADMIN_EXISTS" });
+      return;
+    }
+
+    expect(created.statusCode).toBe(201);
+    const body = created.json() as { email: string; mfaSecret: string; otpauthUrl: string };
+    expect(body.email).toBe(email);
+    expect(body.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+
+    const [row] = await server.db
+      .select({ id: s.users.id })
+      .from(s.users)
+      .where(eq(s.users.email, email));
+    if (row) createdUserIds.push(row.id);
+
+    const status = await server.app.inject({ method: "GET", url: "/auth/setup-status" });
+    expect(status.json()).toEqual({ available: false });
+
+    const second = await server.app.inject({
+      method: "POST",
+      url: "/auth/bootstrap-admin",
+      payload: {
+        email: `admin-boot-two-${Date.now()}@test.invalid`,
+        password: "s3cure-password!",
+        fullName: "Second",
+      },
+    });
+    expect(second.statusCode).toBe(409);
   });
 });

@@ -54,18 +54,24 @@ async function callOnce<T>(
       ? `${API_URL}/trpc/${path}?input=${encodeURIComponent(JSON.stringify(init.body ?? {}))}`
       : `${API_URL}/trpc/${path}`;
 
-  const response = await fetch(url, {
-    method: init.method,
-    headers: {
-      "content-type": "application/json",
-      ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
-    },
-    ...(init.method === "POST" ? { body: JSON.stringify(init.body ?? {}) } : {}),
-    // Every read is per-request. A shift board cached across users would show
-    // one pharmacy's applicants to another, which is the worst possible bug to
-    // introduce for a performance gain nobody asked for.
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: init.method,
+      headers: {
+        "content-type": "application/json",
+        ...(init.token ? { authorization: `Bearer ${init.token}` } : {}),
+      },
+      ...(init.method === "POST" ? { body: JSON.stringify(init.body ?? {}) } : {}),
+      // Every read is per-request. A shift board cached across users would show
+      // one pharmacy's applicants to another, which is the worst possible bug to
+      // introduce for a performance gain nobody asked for.
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    return { ok: false, status: 503, message: "API unreachable" };
+  }
 
   const envelope = (await response.json()) as TrpcEnvelope<T>;
 
@@ -108,27 +114,28 @@ export async function refreshSession(): Promise<string | undefined> {
     const { refreshToken } = await readTokens();
     if (!refreshToken) return undefined;
 
-    const response = await fetch(`${API_URL}/auth/refresh`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
-      cache: "no-store",
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refreshToken }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
 
-    if (!response.ok) {
-      // Refresh rejected: expired, revoked, or flagged as reused. All three
-      // mean the session is over — clearing the cookies is what stops the
-      // client retrying a dead token on every subsequent page.
-      await clearTokens();
+      if (!response.ok) {
+        return undefined;
+      }
+
+      const tokens = (await response.json()) as {
+        accessToken: string;
+        refreshToken: string;
+      };
+      await storeTokens(tokens);
+      return tokens.accessToken;
+    } catch {
       return undefined;
     }
-
-    const tokens = (await response.json()) as {
-      accessToken: string;
-      refreshToken: string;
-    };
-    await storeTokens(tokens);
-    return tokens.accessToken;
   })().finally(() => {
     refreshInFlight = undefined;
   });
@@ -171,17 +178,22 @@ export async function signIn(input: {
   password: string;
   totpCode?: string;
 }): Promise<{ ok: true } | { ok: false; message: string; domainCode?: string }> {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-    cache: "no-store",
-  });
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
 
-  if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+    if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
 
-  await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
-  return { ok: true };
+    await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
+    return { ok: true };
+  } catch {
+    return { ok: false, message: "API unreachable" };
+  }
 }
 
 /**
@@ -238,12 +250,57 @@ export async function register(
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
 
   await storeTokens((await response.json()) as { accessToken: string; refreshToken: string });
   return { ok: true };
+}
+
+export async function fetchSetupStatus(): Promise<{ available: boolean }> {
+  try {
+    const response = await fetch(`${API_URL}/auth/setup-status`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return { available: false };
+    const body = (await response.json()) as { available?: boolean };
+    return { available: body.available === true };
+  } catch {
+    return { available: false };
+  }
+}
+
+export async function bootstrapAdminAccount(input: {
+  email: string;
+  password: string;
+  fullName: string;
+}): Promise<
+  | { ok: true; email: string; mfaSecret: string; otpauthUrl: string }
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await fetch(`${API_URL}/auth/bootstrap-admin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+
+    const body = (await response.json()) as {
+      email: string;
+      mfaSecret: string;
+      otpauthUrl: string;
+    };
+    return { ok: true, ...body };
+  } catch {
+    return { ok: false, message: "API unreachable" };
+  }
 }
 
 export async function signOut(): Promise<void> {

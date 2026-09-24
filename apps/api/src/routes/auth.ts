@@ -9,6 +9,8 @@ import {
   logout,
   refresh,
   register,
+  adminAccountExists,
+  bootstrapFirstAdmin,
   type AuthConfig,
 } from "@locum/core";
 import type { Config } from "../config";
@@ -32,6 +34,8 @@ const registerCommon = {
   password: z.string().min(12, "Password must be at least 12 characters").max(200),
   fullName: z.string().trim().min(2).max(200),
 };
+
+const bootstrapAdminSchema = z.object(registerCommon);
 
 const registerSchema = z.discriminatedUnion("role", [
   z.object({
@@ -74,6 +78,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   SESSION_INVALIDATED: 401,
   EMAIL_TAKEN: 409,
   SAPC_NUMBER_TAKEN: 409,
+  ADMIN_EXISTS: 409,
 };
 
 export function registerAuthRoutes(
@@ -194,6 +199,34 @@ export function registerAuthRoutes(
         return sendDomainError(reply, error, request.log);
       }
     });
+
+    scoped.post("/auth/bootstrap-admin", async (request, reply) => {
+      const parsed = bootstrapAdminSchema.safeParse(request.body);
+      if (!parsed.success) {
+        const message = parsed.error.issues[0]?.message ?? "invalid request";
+        return reply.code(400).send({ error: message });
+      }
+
+      try {
+        const created = await bootstrapFirstAdmin(db, {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          fullName: parsed.data.fullName,
+        });
+        return reply.code(201).send({
+          email: created.email,
+          mfaSecret: created.mfaSecret,
+          otpauthUrl: created.otpauthUrl,
+        });
+      } catch (error) {
+        return sendDomainError(reply, error, request.log);
+      }
+    });
+  });
+
+  app.get("/auth/setup-status", async (_request, reply) => {
+    const available = !(await adminAccountExists(db));
+    return reply.code(200).send({ available });
   });
 
   app.post("/auth/refresh", async (request, reply) => {

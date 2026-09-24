@@ -1,12 +1,23 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { api, UnauthenticatedError } from "./api";
+import { readTokens } from "./session";
 
 export type Role = "locum" | "manager" | "admin";
 
 export interface Viewer {
   readonly id: string;
   readonly role: Role;
+}
+
+function isNextRedirect(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    typeof (error as { digest?: unknown }).digest === "string" &&
+    (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+  );
 }
 
 /**
@@ -24,16 +35,20 @@ export interface Viewer {
  * app would be ugly, not insecure.
  */
 export async function requireViewer(): Promise<Viewer> {
+  const { accessToken, refreshToken } = await readTokens();
+  if (!accessToken && !refreshToken) redirect("/login");
+
   try {
     const me = await api.query<
       { authenticated: true; id: string; role: Role } | { authenticated: false }
     >("me");
 
-    if (!me.authenticated) redirect("/login");
+    if (!me.authenticated) redirect("/session/clear");
     return { id: me.id, role: me.role };
   } catch (error) {
-    if (error instanceof UnauthenticatedError) redirect("/login");
-    throw error;
+    if (isNextRedirect(error)) throw error;
+    if (error instanceof UnauthenticatedError) redirect("/session/clear");
+    redirect("/session/clear");
   }
 }
 

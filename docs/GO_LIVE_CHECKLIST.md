@@ -23,6 +23,9 @@ Two corrections baked into this list, not glossed over:
 
 - [ ] Sign in with a real account. Lands on the role-appropriate home
       (`/browse`, `/shifts`, `/admin`).
+- [ ] First admin: set `ADMIN_EMAIL` and `ADMIN_PASSWORD` on Vercel
+      (Production), redeploy, open `/setup`, click Create, scan the
+      authenticator URI.
 - [ ] DevTools → Application → Cookies: `lp_at` / `lp_rt` present,
       `HttpOnly` + `Secure`.
 - [ ] In the Console, run `document.cookie` — must print an **empty string**.

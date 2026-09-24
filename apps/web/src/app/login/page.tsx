@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { signIn } from "@/lib/api";
+import { api, signIn } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
+import { homeFor, type Role } from "@/lib/guard";
 
 /**
  * Sign in.
@@ -17,7 +18,25 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  if (await isSignedIn()) redirect("/");
+  if (await isSignedIn()) {
+    try {
+      const me = await api.query<
+        { authenticated: true; id: string; role: Role } | { authenticated: false }
+      >("me");
+      if (me.authenticated) redirect(homeFor(me.role));
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "digest" in error &&
+        typeof (error as { digest?: unknown }).digest === "string" &&
+        (error as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw error;
+      }
+    }
+    redirect("/session/clear");
+  }
   const { error } = await searchParams;
 
   async function submit(formData: FormData) {
@@ -94,6 +113,7 @@ export default async function LoginPage({
 
       <p className="hint" style={{ marginTop: "1rem" }}>
         New here? <Link href="/register">Create an account</Link>.
+        First admin? <Link href="/setup">Set up here</Link>.
       </p>
     </main>
   );

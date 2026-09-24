@@ -11,6 +11,7 @@ import {
   needsRehash,
   refresh,
   register,
+  bootstrapFirstAdmin,
   signAccessToken,
   verifyAccessToken,
   verifyTotp,
@@ -282,6 +283,34 @@ describe("GATE security.auth — admin MFA (§12.1)", () => {
     // Two minutes out must not be accepted — that is a replay window.
     expect(verifyTotp(secret, generateTotp(secret, now - 120_000), now)).toBe(false);
     expect(verifyTotp(secret, "abc123", now)).toBe(false);
+  });
+
+  it("bootstraps the first admin with MFA enrolled and refuses a second", async () => {
+    const email = `boot-${unique()}@test.invalid`;
+    const created = await bootstrapFirstAdmin(db, {
+      email,
+      password: "admin-password!",
+      fullName: "First Admin",
+    });
+    createdUserIds.push(created.userId);
+
+    expect(created.email).toBe(email);
+    expect(created.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+
+    const tokens = await login(db, config, {
+      email,
+      password: "admin-password!",
+      totpCode: generateTotp(created.mfaSecret),
+    });
+    expect(tokens.role).toBe("admin");
+
+    await expect(
+      bootstrapFirstAdmin(db, {
+        email: `boot-two-${unique()}@test.invalid`,
+        password: "admin-password!",
+        fullName: "Second Admin",
+      }),
+    ).rejects.toMatchObject({ code: "ADMIN_EXISTS" });
   });
 });
 
