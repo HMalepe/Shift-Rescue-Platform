@@ -9,7 +9,7 @@ import {
   pharmacyMembers,
   shifts,
 } from "@locum/db";
-import { QUOTAS, canPostShifts, startLookingForLocum } from "@locum/core";
+import { QUOTAS, canPostShifts, notifyNearbyLocums, startLookingForLocum } from "@locum/core";
 import { router, managerProcedure, locumProcedure, quota } from "../trpc";
 
 const createShiftSchema = z
@@ -157,6 +157,18 @@ export const shiftsRouter = router({
           ...(input.notes !== undefined && { notes: input.notes }),
         })
         .returning({ id: shifts.id, status: shifts.status });
+
+      /*
+       * Real-time half of "N pharmacies hiring near you" (§11 addendum):
+       * distinct from the favourites/ring fan-out below — this tells every
+       * currently-available locum in range that demand near them just went
+       * up, whether or not they're this pharmacy's regular.
+       */
+      await notifyNearbyLocums(
+        ctx.db,
+        { sender: ctx.whatsappSender, dashboardBaseUrl: ctx.config.DASHBOARD_BASE_URL },
+        { shiftId: created!.id },
+      );
 
       return created!;
     }),

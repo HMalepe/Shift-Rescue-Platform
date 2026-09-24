@@ -53,6 +53,16 @@ export interface SendDeps {
   readonly now?: () => Date;
 }
 
+/**
+ * `SendDeps` plus the one extra thing any sender that builds a deep link
+ * into the dashboard needs — `remindUpcomingShifts`, `notifyNearbyManagers`,
+ * `notifyNearbyLocums` and `sweepNearbyDigest` all take this rather than
+ * `SendDeps` alone.
+ */
+export interface DashboardNotifyDeps extends SendDeps {
+  readonly dashboardBaseUrl: string;
+}
+
 export interface SendInput {
   readonly type: MessageType;
   readonly userId: string;

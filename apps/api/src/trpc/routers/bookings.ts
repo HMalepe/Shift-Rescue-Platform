@@ -189,13 +189,58 @@ export const bookingsRouter = router({
         reason: z.string().max(500).optional(),
       }),
     )
-    .mutation(async ({ ctx, input }) =>
-      cancelBooking(ctx.db, {
+    .mutation(async ({ ctx, input }) => {
+      const result = await cancelBooking(ctx.db, {
         bookingId: input.bookingId,
         actorId: ctx.user.id,
         ...(input.reason !== undefined && { reason: input.reason }),
-      }),
-    ),
+      });
+
+      /*
+       * §9 — tells the OTHER party, not the one who just cancelled. Never
+       * respects quiet hours (see the template's own note): the one operational
+       * message that matters more than an undisturbed night is "you no longer
+       * have cover for tomorrow morning."
+       */
+      const [details] = await ctx.db
+        .select({
+          pharmacyName: pharmacies.name,
+          startsAt: shifts.startsAt,
+          locumId: bookings.locumId,
+          managerId: pharmacyMembers.userId,
+        })
+        .from(bookings)
+        .innerJoin(shifts, eq(shifts.id, bookings.shiftId))
+        .innerJoin(pharmacies, eq(pharmacies.id, shifts.pharmacyId))
+        .innerJoin(
+          pharmacyMembers,
+          and(
+            eq(pharmacyMembers.pharmacyId, shifts.pharmacyId),
+            eq(pharmacyMembers.isPrimary, true),
+          ),
+        )
+        .where(eq(bookings.id, result.bookingId))
+        .limit(1);
+
+      if (details) {
+        const notifyUserId = result.cancelledBy === "locum" ? details.managerId : details.locumId;
+        await sendWhatsAppMessage(
+          ctx.db,
+          { sender: ctx.whatsappSender },
+          {
+            type: "booking_cancelled",
+            userId: notifyUserId,
+            variables: [
+              details.pharmacyName,
+              formatShiftStart(details.startsAt),
+              `${ctx.config.DASHBOARD_BASE_URL}/shifts/${result.shiftId}`,
+            ],
+          },
+        );
+      }
+
+      return result;
+    }),
 
   /**
    * Applicants for one of the manager's own shifts.

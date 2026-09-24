@@ -112,6 +112,24 @@ export const whatsappStatus = pgEnum("whatsapp_status", [
   "undelivered",
 ]);
 
+/**
+ * §11 nearby-activity nudges ("N locums near you" / "N pharmacies hiring near
+ * you"). Real-time reciprocal matching (a locum toggling available near a
+ * pharmacy that's looking) bypasses this entirely — it fires immediately.
+ * This is only the fallback cadence for someone idle: how long between
+ * digests before the count is worth re-sending. `daily` is the ceiling
+ * deliberately — anything less frequent is not really a nudge.
+ */
+export const nearbyNudgeFrequency = pgEnum("nearby_nudge_frequency", [
+  "off",
+  "1h",
+  "2h",
+  "3h",
+  "4h",
+  "6h",
+  "daily",
+]);
+
 /** §12.5 — gate status recorded as data, not in a drifting document. */
 export const gateClock = pgEnum("gate_clock", ["A", "B", "C"]);
 
@@ -147,3 +165,4 @@ export type WhatsappDirection = (typeof whatsappDirection.enumValues)[number];
 export type WhatsappStatus = (typeof whatsappStatus.enumValues)[number];
 export type GateClock = (typeof gateClock.enumValues)[number];
 export type GateStatus = (typeof gateStatus.enumValues)[number];
+export type NearbyNudgeFrequency = (typeof nearbyNudgeFrequency.enumValues)[number];

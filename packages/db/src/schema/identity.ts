@@ -15,6 +15,7 @@ import {
 import { geographyPoint } from "../types/geography";
 import {
   documentType,
+  nearbyNudgeFrequency,
   scanStatus,
   userRole,
   verificationStatus,
@@ -89,6 +90,20 @@ export const users = pgTable(
     /** §4.4 — notifications inside quiet hours are queued to 07:00, not dropped. */
     quietHoursStart: time("quiet_hours_start").notNull().default("21:00"),
     quietHoursEnd: time("quiet_hours_end").notNull().default("07:00"),
+
+    /**
+     * "N locums near you" / "N pharmacies hiring near you". Real-time
+     * reciprocal matching (someone toggling available/looking near this user
+     * right now) bypasses this and sends immediately regardless of cadence —
+     * this only throttles the idle-digest fallback, so a `daily` user is not
+     * re-told the same count every hour on a quiet day.
+     */
+    nearbyNudgeFrequency: nearbyNudgeFrequency("nearby_nudge_frequency")
+      .notNull()
+      .default("daily"),
+    nearbyNudgeLastSentAt: timestamp("nearby_nudge_last_sent_at", {
+      withTimezone: true,
+    }),
 
     disabledAt: timestamp("disabled_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })

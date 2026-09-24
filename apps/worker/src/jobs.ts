@@ -3,8 +3,11 @@ import {
   findStalledSends,
   pendingBacklogSize,
   processDueCharges,
+  remindUpcomingShifts,
   rolloverDuePeriods,
   sweepExpiredQuotas,
+  sweepNearbyDigest,
+  type DashboardNotifyDeps,
   type DrainDeps,
   type DunningDeps,
 } from "@locum/core";
@@ -33,6 +36,8 @@ export const JOB_NAMES = {
   rolloverBillingPeriods: "billing.rollover-periods",
   reportStalledSends: "messaging.report-stalled",
   sweepQuotas: "ratelimit.sweep",
+  remindUpcomingShifts: "messaging.remind-upcoming-shifts",
+  sweepNearbyDigest: "messaging.sweep-nearby-digest",
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
@@ -164,5 +169,43 @@ export async function runSweepQuotas(ctx: JobContext): Promise<void> {
   const removed = await sweepExpiredQuotas(ctx.db);
   if (removed > 0) {
     ctx.log.info({ removed }, "swept expired rate-limit counters");
+  }
+}
+
+/**
+ * shift_starting_soon — reminds every confirmed booking whose shift just
+ * entered the lead window, once each. §4.4 quiet hours never apply to this
+ * one; see the template's own note.
+ */
+export async function runRemindUpcomingShifts(
+  ctx: JobContext,
+  deps: DashboardNotifyDeps,
+  batchSize: number,
+  leadMinutes: number,
+): Promise<void> {
+  const results = await remindUpcomingShifts(ctx.db, deps, { limit: batchSize, leadMinutes });
+  if (results.length === 0) return;
+
+  const tally = results.reduce<Record<string, number>>((acc, r) => {
+    acc[r.outcome.status] = (acc[r.outcome.status] ?? 0) + 1;
+    return acc;
+  }, {});
+
+  ctx.log.info({ reminded: results.length, ...tally }, "sent shift-starting-soon reminders");
+}
+
+/**
+ * "N locums near you" / "N pharmacies hiring near you" — the idle-digest
+ * fallback for whoever the real-time reciprocal path (in apps/api, on
+ * setAvailability and shift creation) isn't telling anything right now.
+ */
+export async function runSweepNearbyDigest(
+  ctx: JobContext,
+  deps: DashboardNotifyDeps,
+  batchSize: number,
+): Promise<void> {
+  const { sent } = await sweepNearbyDigest(ctx.db, deps, { limit: batchSize });
+  if (sent > 0) {
+    ctx.log.info({ sent }, "sent nearby-activity digest nudges");
   }
 }

@@ -106,6 +106,15 @@ const scheduler = startScheduler(config, {
     }),
   },
   dunning: { provider },
+  notify: {
+    sender,
+    dashboardBaseUrl: config.DASHBOARD_BASE_URL,
+    ...(config.WHATSAPP_DAILY_SPEND_CAP_CENTS !== undefined && {
+      dailySpendCapCents: config.WHATSAPP_DAILY_SPEND_CAP_CENTS,
+      onSpendCapExceeded: (context) =>
+        log.warn(context, "daily WhatsApp spend cap exceeded — alerting, not blocking"),
+    }),
+  },
   reporter,
 });
 

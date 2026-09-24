@@ -27,6 +27,15 @@ const schema = z.object({
   REDIS_URL: z.string().default("redis://localhost:6379"),
 
   /**
+   * Deep links into shift_starting_soon and the nearby-activity nudges point
+   * here — the Vercel dashboard, same variable and same reasoning as
+   * apps/api's own copy (see its comment): these are worker-initiated
+   * messages, so the worker needs it too rather than relying on the API to
+   * have built the link.
+   */
+  DASHBOARD_BASE_URL: z.string().trim().url().default("http://localhost:3001"),
+
+  /**
    * How often the quiet-hours queue is swept.
    *
    * A minute is far more often than §4.4 needs — the backlog is due at 07:00
@@ -44,6 +53,25 @@ const schema = z.object({
    */
   DUNNING_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
   DUNNING_BATCH_SIZE: z.coerce.number().int().positive().default(100),
+
+  /**
+   * Shift-start reminders. Five minutes is fine granularity for a job that
+   * only needs to catch a shift entering its lead window once — the
+   * reminder itself never respects quiet hours (see the template), so
+   * running this coarser would just widen how late a 05:58 shift's reminder
+   * could arrive.
+   */
+  SHIFT_REMINDER_INTERVAL_MS: z.coerce.number().int().positive().default(300_000),
+  SHIFT_REMINDER_LEAD_MINUTES: z.coerce.number().int().positive().default(60),
+  SHIFT_REMINDER_BATCH_SIZE: z.coerce.number().int().positive().default(200),
+
+  /**
+   * "N locums/pharmacies near you" idle-digest sweep. Hourly, because `1h`
+   * is the finest cadence a user can choose (see NearbyNudgeFrequency) — a
+   * coarser sweep would make that setting a lie.
+   */
+  NEARBY_NUDGE_INTERVAL_MS: z.coerce.number().int().positive().default(3_600_000),
+  NEARBY_NUDGE_BATCH_SIZE: z.coerce.number().int().positive().default(200),
 
   /** §11.6 — soft daily cap. Alerts, never blocks. */
   WHATSAPP_DAILY_SPEND_CAP_CENTS: z.coerce.number().int().positive().optional(),

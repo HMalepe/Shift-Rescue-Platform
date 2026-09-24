@@ -27,7 +27,18 @@ export type MessageType =
   // Marketing — stricter opt-in enforcement, throttled harder if muted.
   | "upgrade_prompt"
   | "referral_nudge"
-  | "re_engagement";
+  | "re_engagement"
+  /*
+   * "N locums near you" / "N pharmacies hiring near you". Marketing, not
+   * Utility, deliberately — unlike shift_offer (a specific match against
+   * preferences the recipient set) these are a general area-activity count,
+   * not tied to a transaction the recipient took. Sent either in real time
+   * (a reciprocal match — someone toggled available/looking nearby right
+   * now) or as an idle digest at the recipient's own chosen cadence, never
+   * more often than that cadence allows — see nearby.ts.
+   */
+  | "locums_nearby"
+  | "pharmacies_nearby";
 
 export interface TemplateSpec {
   /** Meta template name, as submitted under this sender. */
@@ -141,6 +152,18 @@ export const TEMPLATES: Readonly<Record<MessageType, TemplateSpec>> = {
   },
   re_engagement: {
     templateName: "re_engagement_v1",
+    category: "marketing",
+    businessInitiated: true,
+    respectsQuietHours: true,
+  },
+  locums_nearby: {
+    templateName: "locums_nearby_v1",
+    category: "marketing",
+    businessInitiated: true,
+    respectsQuietHours: true,
+  },
+  pharmacies_nearby: {
+    templateName: "pharmacies_nearby_v1",
     category: "marketing",
     businessInitiated: true,
     respectsQuietHours: true,

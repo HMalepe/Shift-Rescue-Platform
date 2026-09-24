@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { locumProfiles, pharmacies, pharmacyMembers, users } from "@locum/db";
-import { claimRegistrationNumber } from "@locum/core";
+import { claimRegistrationNumber, notifyNearbyManagers } from "@locum/core";
 import { router, locumProcedure, managerProcedure, protectedProcedure } from "../trpc";
 
 const coordinate = z.object({
@@ -196,6 +196,22 @@ export const profileRouter = router({
           updatedAt: now,
         })
         .where(eq(locumProfiles.userId, ctx.user.id));
+
+      /*
+       * The real-time half of the "N locums near you" nudge (§11 addendum):
+       * going available right now, not scheduling a future date, is what
+       * makes this worth telling a nearby pharmacy about immediately rather
+       * than waiting for their own digest cadence. `sendWhatsAppMessage`
+       * inside this never throws, so a notify failure cannot turn a
+       * successful availability update into a failed request.
+       */
+      if (input.availableFrom !== null && input.availableFrom.getTime() <= now.getTime()) {
+        await notifyNearbyManagers(
+          ctx.db,
+          { sender: ctx.whatsappSender, dashboardBaseUrl: ctx.config.DASHBOARD_BASE_URL },
+          { locumId: ctx.user.id },
+        );
+      }
 
       return { availableFrom: input.availableFrom, confirmedAt: now };
     }),

@@ -163,6 +163,13 @@ export const bookings = pgTable(
       .notNull()
       .default(false),
 
+    /**
+     * shift_starting_soon fires once per booking, inside its lead window —
+     * this is what makes a 5-minute sweep over a 60-minute window idempotent
+     * instead of re-sending on every tick the booking still matches.
+     */
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .default(now),

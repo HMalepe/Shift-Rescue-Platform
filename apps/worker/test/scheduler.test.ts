@@ -223,6 +223,7 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         // The drain's `now` is pushed past 07:00 so the row is due.
         drain: { sender, workerId: "test-worker", now: () => new Date(Date.now() + 86_400_000) },
         dunning: { provider: new FakePaymentProvider() },
+        notify: { sender, dashboardBaseUrl: "http://localhost:3001" },
         reporter: new RecordingReporter(),
       },
     );
@@ -273,6 +274,7 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         log,
         drain: { sender: new FakeWhatsAppSender(), workerId: "test-worker" },
         dunning: { provider: new FakePaymentProvider() },
+        notify: { sender: new FakeWhatsAppSender(), dashboardBaseUrl: "http://localhost:3001" },
         reporter: new RecordingReporter(),
       },
     );
@@ -316,6 +318,7 @@ describe("GATE worker.scheduled_jobs — §4.4 / §2", () => {
         log,
         drain: { sender: new FakeWhatsAppSender(), workerId: "test-worker" },
         dunning: { provider: new FakePaymentProvider() },
+        notify: { sender: new FakeWhatsAppSender(), dashboardBaseUrl: "http://localhost:3001" },
         reporter,
       },
     );

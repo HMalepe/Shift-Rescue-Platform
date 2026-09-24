@@ -1,5 +1,5 @@
 import { Queue, QueueEvents, Worker, type ConnectionOptions, type Job } from "bullmq";
-import type { DrainDeps, DunningDeps } from "@locum/core";
+import type { DashboardNotifyDeps, DrainDeps, DunningDeps } from "@locum/core";
 import { classify, type ErrorReporter } from "@locum/observability";
 import type { Database } from "@locum/db";
 import type { WorkerConfig } from "./config";
@@ -7,8 +7,10 @@ import {
   JOB_NAMES,
   runDrainDeferredMessages,
   runProcessDueCharges,
+  runRemindUpcomingShifts,
   runReportStalledSends,
   runRolloverBillingPeriods,
+  runSweepNearbyDigest,
   runSweepQuotas,
   type JobContext,
   type JobLogger,
@@ -21,6 +23,7 @@ export interface SchedulerDeps {
   readonly log: JobLogger & { error(context: Record<string, unknown>, message: string): void };
   readonly drain: DrainDeps;
   readonly dunning: DunningDeps;
+  readonly notify: DashboardNotifyDeps;
   readonly reporter: ErrorReporter;
 }
 
@@ -87,6 +90,15 @@ export function startScheduler(
           return runReportStalledSends(ctx);
         case JOB_NAMES.sweepQuotas:
           return runSweepQuotas(ctx);
+        case JOB_NAMES.remindUpcomingShifts:
+          return runRemindUpcomingShifts(
+            ctx,
+            deps.notify,
+            config.SHIFT_REMINDER_BATCH_SIZE,
+            config.SHIFT_REMINDER_LEAD_MINUTES,
+          );
+        case JOB_NAMES.sweepNearbyDigest:
+          return runSweepNearbyDigest(ctx, deps.notify, config.NEARBY_NUDGE_BATCH_SIZE);
         default:
           /*
            * Thrown, not logged and swallowed. An unknown job name means a
@@ -160,6 +172,10 @@ export function desiredSchedules(
     // Housekeeping. Hourly is far more often than needed for a 48h retention,
     // and it is one indexed DELETE.
     { name: JOB_NAMES.sweepQuotas, every: 3_600_000 },
+    { name: JOB_NAMES.remindUpcomingShifts, every: config.SHIFT_REMINDER_INTERVAL_MS },
+    // Hourly, because `1h` is the finest nearbyNudgeFrequency a user can
+    // choose — see the enum's own comment.
+    { name: JOB_NAMES.sweepNearbyDigest, every: config.NEARBY_NUDGE_INTERVAL_MS },
   ];
 }
 

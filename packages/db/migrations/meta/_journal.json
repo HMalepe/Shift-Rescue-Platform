@@ -78,6 +78,20 @@
       "when": 1788726000000,
       "tag": "0010_one_registration_per_email",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790276862682,
+      "tag": "0011_spotty_randall",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790277297804,
+      "tag": "0012_bent_roxanne_simpson",
+      "breakpoints": true
     }
   ]
 }
