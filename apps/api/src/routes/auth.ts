@@ -24,13 +24,7 @@ const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 
 const registerCommon = {
   email: z.string().trim().email(),
-  /**
-   * A floor rather than the full NIST-style complexity-scoring dance — the
-   * account this protects can't yet do anything a stronger policy would meet
-   * a fundamentally different attacker at (see `hashPassword`'s Argon2 cost,
-   * which is the actual brute-force defence).
-   */
-  password: z.string().min(12, "Password must be at least 12 characters").max(200),
+  password: z.string().min(1, "Enter a password").max(200),
   fullName: z.string().trim().min(2).max(200),
 };
 

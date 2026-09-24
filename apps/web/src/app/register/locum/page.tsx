@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PasswordField } from "@/components/PasswordField";
 import { register } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
 
@@ -55,18 +56,7 @@ export default async function RegisterLocumPage({
           <input id="email" name="email" type="email" required autoComplete="username" />
         </div>
 
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={12}
-            autoComplete="new-password"
-          />
-          <p className="hint">At least 12 characters.</p>
-        </div>
+        <PasswordField id="password" autoComplete="new-password" />
 
         <div className="field">
           <label htmlFor="sapcNumber">SAPC registration number</label>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { PasswordField } from "@/components/PasswordField";
 import { register } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
 import { PHARMACY_AREA_NAMES } from "@/lib/pharmacy-areas";
@@ -57,18 +58,7 @@ export default async function RegisterManagerPage({
           <label htmlFor="email">Email</label>
           <input id="email" name="email" type="email" required autoComplete="username" />
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={12}
-            autoComplete="new-password"
-          />
-          <p className="hint">At least 12 characters.</p>
-        </div>
+        <PasswordField id="password" autoComplete="new-password" />
 
         <h2>Pharmacy</h2>
         <div className="field">

@@ -38,10 +38,6 @@ if (role !== "manager" && role !== "locum" && role !== "admin") {
   console.error(`ROLE must be manager, locum or admin — got: ${role}`);
   process.exit(1);
 }
-if (password.length < 12) {
-  console.error("PASSWORD must be at least 12 characters");
-  process.exit(1);
-}
 
 const { db, client } = createDatabase({ url });
 

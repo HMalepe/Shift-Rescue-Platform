@@ -11,7 +11,7 @@ export function readAdminEnv():
   const password = process.env["ADMIN_PASSWORD"] ?? "";
   const fullName = process.env["ADMIN_FULL_NAME"]?.trim() || "Admin";
 
-  if (email === "" || password.length < 12) {
+  if (email === "" || password === "") {
     return { configured: false };
   }
 

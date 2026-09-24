@@ -196,6 +196,29 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 textarea { resize: vertical; min-height: 4.5rem; }
 
 .field { margin-bottom: 1rem; }
+
+.password-field { position: relative; }
+.password-field input { padding-right: 2.75rem; }
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.2rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+}
+.password-toggle:hover {
+  color: var(--text);
+  border-color: transparent;
+  background: transparent;
+}
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 34rem) { .field-row { grid-template-columns: 1fr; } }
 

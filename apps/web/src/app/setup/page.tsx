@@ -13,8 +13,8 @@ export default async function SetupPage() {
       {!admin.configured ? (
         <p className="lede">
           In Vercel → Settings → Environment Variables (Production), set{" "}
-          <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code> (at least 12
-          characters). Redeploy, then come back here.
+          <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code>. Redeploy, then
+          come back here.
         </p>
       ) : !available ? (
         <p className="lede">

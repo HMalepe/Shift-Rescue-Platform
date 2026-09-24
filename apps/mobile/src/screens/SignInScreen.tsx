@@ -83,26 +83,48 @@ function Field({
   autoComplete?: "username" | "current-password";
   keyboardType?: "email-address";
 }) {
+  const [visible, setVisible] = useState(false);
+
   return (
     <View style={{ gap: 4 }}>
       <Text style={{ fontSize: 13, fontWeight: "500", color: theme.text }}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        secureTextEntry={secure ?? false}
-        autoCapitalize="none"
-        autoCorrect={false}
-        {...(autoComplete ? { autoComplete } : {})}
-        {...(keyboardType ? { keyboardType } : {})}
-        style={{
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 8,
-          padding: 12,
-          backgroundColor: theme.surface,
-          color: theme.text,
-        }}
-      />
+      <View>
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          secureTextEntry={secure === true && !visible}
+          autoCapitalize="none"
+          autoCorrect={false}
+          {...(autoComplete ? { autoComplete } : {})}
+          {...(keyboardType ? { keyboardType } : {})}
+          style={{
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 8,
+            padding: 12,
+            paddingRight: secure ? 48 : 12,
+            backgroundColor: theme.surface,
+            color: theme.text,
+          }}
+        />
+        {secure ? (
+          <Pressable
+            onPress={() => setVisible((current) => !current)}
+            accessibilityLabel={visible ? "Hide password" : "Show password"}
+            accessibilityRole="button"
+            style={{
+              position: "absolute",
+              right: 4,
+              top: 0,
+              bottom: 0,
+              justifyContent: "center",
+              paddingHorizontal: 8,
+            }}
+          >
+            <Text style={{ color: theme.textDim, fontSize: 18 }}>{visible ? "🙈" : "👁"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }

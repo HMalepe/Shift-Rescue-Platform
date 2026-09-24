@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { api, signIn } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
+import { PasswordField } from "@/components/PasswordField";
 import { homeFor, type Role } from "@/lib/guard";
 
 /** Sign in with email and password. */
@@ -69,16 +70,7 @@ export default async function LoginPage({
           <input id="email" name="email" type="email" required autoComplete="username" />
         </div>
 
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="current-password"
-          />
-        </div>
+        <PasswordField id="password" autoComplete="current-password" />
 
         <button type="submit" className="primary" style={{ width: "100%" }}>
           Sign in

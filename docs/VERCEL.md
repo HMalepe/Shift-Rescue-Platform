@@ -36,7 +36,7 @@ In the Vercel project's Settings → Environment Variables, set:
 ```
 API_URL = https://<your-api-service>.up.railway.app
 ADMIN_EMAIL = you@example.com
-ADMIN_PASSWORD = <at least 12 characters>
+ADMIN_PASSWORD = <the password you will sign in with>
 ```
 
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` are server-only (no `NEXT_PUBLIC_` prefix).
