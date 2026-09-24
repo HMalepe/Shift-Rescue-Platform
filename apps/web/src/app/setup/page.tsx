@@ -26,8 +26,8 @@ export default async function SetupPage() {
       ) : (
         <>
           <p className="lede">
-            <strong>{admin.email}</strong> already exists. This sets its sign-in
-            password to the <code>ADMIN_PASSWORD</code> currently on Vercel.
+            <strong>{admin.email}</strong> can also be a pharmacy account. This
+            saves <code>ADMIN_PASSWORD</code> on a separate admin sign-in.
           </p>
           <PasswordForm email={admin.email} mode="reset" />
         </>

@@ -93,7 +93,7 @@ async function makeActor(
 
   const response = await server.app.inject({
     method: "POST",
-    url: "/auth/login",
+    url: role === "admin" ? "/auth/admin-login" : "/auth/login",
     payload: {
       email,
       password: PASSWORD,

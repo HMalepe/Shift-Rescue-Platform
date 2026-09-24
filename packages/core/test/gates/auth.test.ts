@@ -53,9 +53,10 @@ const unique = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 async function createUser(options: {
   role: "manager" | "locum" | "admin";
   password: string;
+  email?: string;
   mfaSecret?: string;
 }) {
-  const email = `auth-${Date.now()}-${Math.random().toString(36).slice(2)}@test.invalid`;
+  const email = options.email ?? `auth-${Date.now()}-${Math.random().toString(36).slice(2)}@test.invalid`;
   const [user] = await db
     .insert(s.users)
     .values({
@@ -166,11 +167,32 @@ describe("GATE security.auth — admin sign-in", () => {
     const tokens = await login(db, config, {
       email: admin.email,
       password: "admin-password!",
+      audience: "admin",
     });
 
     expect(tokens.role).toBe("admin");
     const verified = verifyAccessToken(tokens.accessToken, config.secret);
     expect(verified.valid && verified.claims.mfa).toBe(true);
+  });
+
+  it("does not treat a manager password as the admin password when they share an email", async () => {
+    const email = `shared-${unique()}@test.invalid`;
+    await createUser({ role: "manager", password: "manager-pass", email });
+    await createUser({ role: "admin", password: "admin-pass", email });
+
+    await expect(
+      login(db, config, { email, password: "admin-pass" }),
+    ).rejects.toMatchObject({ code: "INVALID_CREDENTIALS" });
+
+    const adminTokens = await login(db, config, {
+      email,
+      password: "admin-pass",
+      audience: "admin",
+    });
+    expect(adminTokens.role).toBe("admin");
+
+    const managerTokens = await login(db, config, { email, password: "manager-pass" });
+    expect(managerTokens.role).toBe("manager");
   });
 
   it("accepts adjacent time windows but not distant ones", () => {
@@ -200,6 +222,7 @@ describe("GATE security.auth — admin sign-in", () => {
     const tokens = await login(db, config, {
       email,
       password: "admin-password!",
+      audience: "admin",
     });
     expect(tokens.role).toBe("admin");
 

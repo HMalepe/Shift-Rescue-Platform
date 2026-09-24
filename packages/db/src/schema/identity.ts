@@ -99,8 +99,9 @@ export const users = pgTable(
       .default(now),
   },
   (table) => [
-    // Case-insensitive uniqueness: "A@b.com" and "a@b.com" are one account.
-    uniqueIndex("users_email_lower_key").on(sql`lower(${table.email})`),
+    // One person may be a pharmacy manager and an admin. Uniqueness is per role,
+    // so the two accounts can share an email and still have different passwords.
+    uniqueIndex("users_email_role_key").on(sql`lower(${table.email})`, table.role),
     uniqueIndex("users_phone_key")
       .on(table.phone)
       .where(sql`${table.phone} is not null`),

@@ -34,9 +34,9 @@ function isNextRedirect(error: unknown): boolean {
  * behind it re-checks authorization server-side; if this file were deleted the
  * app would be ugly, not insecure.
  */
-export async function requireViewer(): Promise<Viewer> {
+export async function requireViewer(loginPath = "/login"): Promise<Viewer> {
   const { accessToken, refreshToken } = await readTokens();
-  if (!accessToken && !refreshToken) redirect("/login");
+  if (!accessToken && !refreshToken) redirect(loginPath);
 
   try {
     const me = await api.query<
@@ -53,7 +53,8 @@ export async function requireViewer(): Promise<Viewer> {
 }
 
 export async function requireRole(...allowed: Role[]): Promise<Viewer> {
-  const viewer = await requireViewer();
+  const loginPath = allowed.length === 1 && allowed[0] === "admin" ? "/admin/login" : "/login";
+  const viewer = await requireViewer(loginPath);
   if (!allowed.includes(viewer.role)) {
     // Sent home rather than shown a 403. Someone landing on the wrong
     // dashboard has almost always followed a stale link, not attempted an

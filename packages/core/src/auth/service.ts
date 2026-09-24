@@ -40,6 +40,12 @@ export const DEFAULT_AUTH_CONFIG: Omit<AuthConfig, "secret"> = {
 export interface LoginInput {
   readonly email: string;
   readonly password: string;
+  /**
+   * "admin" matches only an admin row. The ordinary screen matches every other
+   * role, so a manager and an admin can share an email without either password
+   * being checked against the wrong account.
+   */
+  readonly audience?: "participant" | "admin";
   readonly ipAddress?: string;
   readonly userAgent?: string;
 }
@@ -122,7 +128,7 @@ export async function register(
         .returning({ id: users.id });
       userId = created!.id;
     } catch (error) {
-      if (isUniqueViolation(error, "users_email_lower_key")) {
+      if (isUniqueViolation(error, "users_email_role_key")) {
         throw new DomainError("EMAIL_TAKEN", "An account with this email already exists");
       }
       throw error;
@@ -220,7 +226,7 @@ export async function bootstrapFirstAdmin(
         email: created!.email,
       };
     } catch (error) {
-      if (isUniqueViolation(error, "users_email_lower_key")) {
+      if (isUniqueViolation(error, "users_email_role_key")) {
         throw new DomainError("EMAIL_TAKEN", "An account with this email already exists");
       }
       throw error;
@@ -235,17 +241,28 @@ export async function bootstrapFirstAdmin(
  */
 export async function setAdminPassword(
   db: Database,
-  input: { readonly email: string; readonly password: string },
+  input: { readonly email: string; readonly password: string; readonly fullName?: string },
 ): Promise<{ email: string }> {
   const email = input.email.trim().toLowerCase();
   const [user] = await db
     .select({ id: users.id, email: users.email, role: users.role })
     .from(users)
-    .where(sql`lower(${users.email}) = ${email}`)
+    .where(and(sql`lower(${users.email}) = ${email}`, eq(users.role, "admin")))
     .limit(1);
 
-  if (!user || user.role !== "admin") {
-    throw new DomainError("ADMIN_NOT_FOUND", "No admin account uses that email");
+  if (!user) {
+    const passwordHash = await hashPassword(input.password);
+    const [created] = await db
+      .insert(users)
+      .values({
+        id: randomUUID(),
+        role: "admin",
+        email,
+        fullName: input.fullName?.trim() || "Admin",
+        passwordHash,
+      })
+      .returning({ email: users.email });
+    return { email: created!.email };
   }
 
   await changePassword(db, user.id, input.password);
@@ -278,7 +295,8 @@ export async function login(
 
   await assertNotLockedOut(db, config, email);
 
-  const [user] = await db
+  const audience = input.audience ?? "participant";
+  const rows = await db
     .select({
       id: users.id,
       role: users.role,
@@ -286,8 +304,11 @@ export async function login(
       disabledAt: users.disabledAt,
     })
     .from(users)
-    .where(sql`lower(${users.email}) = ${email}`)
-    .limit(1);
+    .where(sql`lower(${users.email}) = ${email}`);
+
+  const candidates = rows.filter((row) =>
+    audience === "admin" ? row.role === "admin" : row.role !== "admin",
+  );
 
   /*
    * Timing equalisation.
@@ -299,8 +320,21 @@ export async function login(
    * is on the platform, which is a POPIA exposure (§10) as much as a security
    * one. Verifying against a dummy hash spends the same work either way.
    */
-  const storedHash = user?.passwordHash ?? (await getDummyHash());
-  const passwordOk = await verifyPassword(storedHash, input.password);
+  let user = candidates.find((row) => row.passwordHash);
+  let passwordOk = false;
+  if (candidates.length === 0) {
+    await verifyPassword(await getDummyHash(), input.password);
+  } else {
+    for (const candidate of candidates) {
+      const hash = candidate.passwordHash ?? (await getDummyHash());
+      const matches = await verifyPassword(hash, input.password);
+      if (candidate.passwordHash && matches) {
+        user = candidate;
+        passwordOk = true;
+        break;
+      }
+    }
+  }
 
   if (!user || !user.passwordHash || !passwordOk) {
     await recordAttempt(db, email, input.ipAddress, false, user ? "bad_password" : "no_such_user");

@@ -176,12 +176,13 @@ export const api = {
 export async function signIn(input: {
   email: string;
   password: string;
+  admin?: boolean;
 }): Promise<{ ok: true } | { ok: false; message: string; domainCode?: string }> {
   try {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(`${API_URL}${input.admin ? "/auth/admin-login" : "/auth/login"}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ email: input.email, password: input.password }),
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
@@ -298,6 +299,7 @@ export async function bootstrapAdminAccount(input: {
 export async function syncAdminPassword(input: {
   email: string;
   password: string;
+  fullName: string;
   syncSecret: string;
 }): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
   try {
@@ -307,7 +309,11 @@ export async function syncAdminPassword(input: {
         "content-type": "application/json",
         "x-admin-sync-secret": input.syncSecret,
       },
-      body: JSON.stringify({ email: input.email, password: input.password }),
+      body: JSON.stringify({
+        email: input.email,
+        password: input.password,
+        fullName: input.fullName,
+      }),
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });

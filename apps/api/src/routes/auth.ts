@@ -118,6 +118,29 @@ export function registerAuthRoutes(
         const tokens = await login(db, authConfig, {
           email: parsed.data.email,
           password: parsed.data.password,
+          audience: "participant",
+          ...(request.ip !== undefined && { ipAddress: request.ip }),
+          ...(typeof request.headers["user-agent"] === "string" && {
+            userAgent: request.headers["user-agent"],
+          }),
+        });
+        return reply.code(200).send(tokens);
+      } catch (error) {
+        return sendDomainError(reply, error, request.log);
+      }
+    });
+
+    scoped.post("/auth/admin-login", async (request, reply) => {
+      const parsed = loginSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid request" });
+      }
+
+      try {
+        const tokens = await login(db, authConfig, {
+          email: parsed.data.email,
+          password: parsed.data.password,
+          audience: "admin",
           ...(request.ip !== undefined && { ipAddress: request.ip }),
           ...(typeof request.headers["user-agent"] === "string" && {
             userAgent: request.headers["user-agent"],
@@ -231,6 +254,7 @@ export function registerAuthRoutes(
         .object({
           email: z.string().trim().email(),
           password: z.string().min(1).max(200),
+          fullName: z.string().trim().min(1).max(200).optional(),
         })
         .safeParse(request.body);
       if (!parsed.success) {

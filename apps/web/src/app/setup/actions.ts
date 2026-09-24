@@ -47,6 +47,7 @@ export async function applyAdminPassword(
   return syncAdminPassword({
     email: admin.email,
     password: admin.password,
+    fullName: admin.fullName,
     syncSecret,
   });
 }

@@ -16,7 +16,7 @@ export function PasswordForm({ email, mode }: { email: string; mode: "create" | 
           <strong>{state.email}</strong>.
         </p>
         <p className="hint" style={{ marginTop: "1rem" }}>
-          <Link href="/login">Sign in</Link> with that email and the Vercel password.
+          <Link href="/admin/login">Sign in as admin</Link> with that email and the Vercel password.
         </p>
       </div>
     );
@@ -33,7 +33,7 @@ export function PasswordForm({ email, mode }: { email: string; mode: "create" | 
       <p>
         {mode === "create"
           ? `This will create ${email} from the Vercel env vars.`
-          : `This will set the password for ${email} from ADMIN_PASSWORD.`}{" "}
+          : `This saves a separate admin sign-in for ${email}, even if that email is already a pharmacy account.`}{" "}
         The password never leaves the server.
       </p>
 

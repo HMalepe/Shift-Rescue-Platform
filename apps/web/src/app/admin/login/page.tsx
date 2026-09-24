@@ -3,10 +3,16 @@ import { redirect } from "next/navigation";
 import { api, signIn } from "@/lib/api";
 import { isSignedIn } from "@/lib/session";
 import { PasswordField } from "@/components/PasswordField";
-import { homeFor, type Role } from "@/lib/guard";
+import type { Role } from "@/lib/guard";
 
-/** Sign in with email and password. */
-export default async function LoginPage({
+/**
+ * Admin sign-in. Separate from the pharmacy and locum screen because the same
+ * email can belong to both, with a different password on each.
+ *
+ * A manager session does not bounce away from this page — signing in here
+ * replaces that session with the admin one.
+ */
+export default async function AdminLoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
@@ -16,7 +22,7 @@ export default async function LoginPage({
       const me = await api.query<
         { authenticated: true; id: string; role: Role } | { authenticated: false }
       >("me");
-      if (me.authenticated) redirect(homeFor(me.role));
+      if (me.authenticated && me.role === "admin") redirect("/admin");
     } catch (error) {
       if (
         typeof error === "object" &&
@@ -28,7 +34,6 @@ export default async function LoginPage({
         throw error;
       }
     }
-    redirect("/session/clear");
   }
   const { error } = await searchParams;
 
@@ -37,26 +42,21 @@ export default async function LoginPage({
 
     const email = String(formData.get("email") ?? "");
     const password = String(formData.get("password") ?? "");
-
-    const result = await signIn({ email, password });
+    const result = await signIn({ email, password, admin: true });
 
     if (!result.ok) {
-      /*
-       * The message comes from the API, which returns the same "Invalid email
-       * or password" for a wrong password and an unknown address. Rewriting it
-       * here to be more helpful would rebuild the account-enumeration oracle
-       * the API went out of its way not to be.
-       */
-      redirect(`/login?error=${encodeURIComponent(result.message)}`);
+      redirect(`/admin/login?error=${encodeURIComponent(result.message)}`);
     }
 
-    redirect("/");
+    redirect("/admin");
   }
 
   return (
     <main className="shell" style={{ maxWidth: "24rem", paddingTop: "5rem" }}>
-      <h1>Locum Planner</h1>
-      <p className="lede">Relief pharmacist cover, Johannesburg and greater Gauteng.</p>
+      <h1>Admin sign in</h1>
+      <p className="lede">
+        This is separate from a pharmacy or locum account, even when they share an email.
+      </p>
 
       {error ? (
         <p className="alert alert-error" role="alert">
@@ -70,7 +70,7 @@ export default async function LoginPage({
           <input id="email" name="email" type="email" required autoComplete="username" />
         </div>
 
-        <PasswordField id="password" autoComplete="current-password" />
+        <PasswordField id="admin-password" autoComplete="current-password" />
 
         <button type="submit" className="primary" style={{ width: "100%" }}>
           Sign in
@@ -78,8 +78,8 @@ export default async function LoginPage({
       </form>
 
       <p className="hint" style={{ marginTop: "1rem" }}>
-        New here? <Link href="/register">Create an account</Link>.
-        Admin? <Link href="/admin/login">Sign in here</Link>.
+        Pharmacy or locum? <Link href="/login">Sign in here</Link>.
+        First time? <Link href="/setup">Set the admin password</Link>.
       </p>
     </main>
   );
