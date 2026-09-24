@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
-import { bootstrapAdmin, type SetupState } from "./actions";
+import { applyAdminPassword, bootstrapAdmin, type SetupState } from "./actions";
 
-export function SetupForm({ email }: { email: string }) {
-  const [state, formAction, pending] = useActionState(bootstrapAdmin, null as SetupState);
+export function PasswordForm({ email, mode }: { email: string; mode: "create" | "reset" }) {
+  const action = mode === "create" ? bootstrapAdmin : applyAdminPassword;
+  const [state, formAction, pending] = useActionState(action, null as SetupState);
 
   if (state?.ok) {
     return (
       <div className="card">
         <p>
-          Admin account created for <strong>{state.email}</strong>.
+          {mode === "create" ? "Admin account created" : "Password updated"} for{" "}
+          <strong>{state.email}</strong>.
         </p>
         <p className="hint" style={{ marginTop: "1rem" }}>
           <Link href="/login">Sign in</Link> with that email and the Vercel password.
@@ -29,12 +31,14 @@ export function SetupForm({ email }: { email: string }) {
       ) : null}
 
       <p>
-        This will create <strong>{email}</strong> from the Vercel env vars. The
-        password never leaves the server.
+        {mode === "create"
+          ? `This will create ${email} from the Vercel env vars.`
+          : `This will set the password for ${email} from ADMIN_PASSWORD.`}{" "}
+        The password never leaves the server.
       </p>
 
       <button type="submit" className="primary" style={{ width: "100%" }} disabled={pending}>
-        {pending ? "Creating…" : "Create admin"}
+        {pending ? "Saving…" : mode === "create" ? "Create admin" : "Use Vercel password"}
       </button>
     </form>
   );

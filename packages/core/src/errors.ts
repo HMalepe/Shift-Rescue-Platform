@@ -28,6 +28,7 @@ export type DomainErrorCode =
   | "EMAIL_TAKEN"
   | "SAPC_NUMBER_TAKEN"
   | "ADMIN_EXISTS"
+  | "ADMIN_NOT_FOUND"
   // §8 attendance
   | "NOT_BOOKING_OWNER"
   | "BOOKING_NOT_CONFIRMED"

@@ -49,6 +49,13 @@ const schema = z.object({
   AUTH_SECRET: z.string().trim().min(32, "AUTH_SECRET must be at least 32 characters"),
 
   /**
+   * Shared by the dashboard and the API. The setup page sends it when applying
+   * ADMIN_PASSWORD to an admin that already exists. Absent, that route refuses
+   * every caller — it must not be an open password reset.
+   */
+  ADMIN_SYNC_SECRET: z.string().min(16).optional(),
+
+  /**
    * §0.1 — where alerts go. Sentry, PagerDuty Events, Opsgenie, a Slack hook:
    * anything that accepts a JSON POST. Optional so the service boots locally
    * without one; `assertProductionReady` refuses to let that reach production,

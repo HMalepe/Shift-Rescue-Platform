@@ -295,6 +295,32 @@ export async function bootstrapAdminAccount(input: {
   }
 }
 
+export async function syncAdminPassword(input: {
+  email: string;
+  password: string;
+  syncSecret: string;
+}): Promise<{ ok: true; email: string } | { ok: false; message: string }> {
+  try {
+    const response = await fetch(`${API_URL}/auth/sync-admin-password`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-admin-sync-secret": input.syncSecret,
+      },
+      body: JSON.stringify({ email: input.email, password: input.password }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!response.ok) return { ok: false, ...(await parseAuthFailure(response)) };
+
+    const body = (await response.json()) as { email: string };
+    return { ok: true, email: body.email };
+  } catch {
+    return { ok: false, message: "API unreachable" };
+  }
+}
+
 export async function signOut(): Promise<void> {
   const { refreshToken } = await readTokens();
   if (refreshToken) {

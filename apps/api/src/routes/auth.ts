@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import type { Database } from "@locum/db";
 import {
@@ -11,6 +12,7 @@ import {
   register,
   adminAccountExists,
   bootstrapFirstAdmin,
+  setAdminPassword,
   type AuthConfig,
 } from "@locum/core";
 import type { Config } from "../config";
@@ -72,6 +74,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EMAIL_TAKEN: 409,
   SAPC_NUMBER_TAKEN: 409,
   ADMIN_EXISTS: 409,
+  ADMIN_NOT_FOUND: 404,
 };
 
 export function registerAuthRoutes(
@@ -212,6 +215,35 @@ export function registerAuthRoutes(
         return sendDomainError(reply, error, request.log);
       }
     });
+
+    scoped.post("/auth/sync-admin-password", async (request, reply) => {
+      const expected = config.ADMIN_SYNC_SECRET;
+      const provided = request.headers["x-admin-sync-secret"];
+      if (
+        expected === undefined ||
+        typeof provided !== "string" ||
+        !secretsMatch(expected, provided)
+      ) {
+        return reply.code(401).send({ error: "unauthorized" });
+      }
+
+      const parsed = z
+        .object({
+          email: z.string().trim().email(),
+          password: z.string().min(1).max(200),
+        })
+        .safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid request" });
+      }
+
+      try {
+        const updated = await setAdminPassword(db, parsed.data);
+        return reply.code(200).send({ email: updated.email });
+      } catch (error) {
+        return sendDomainError(reply, error, request.log);
+      }
+    });
   });
 
   app.get("/auth/setup-status", async (_request, reply) => {
@@ -248,6 +280,13 @@ export function registerAuthRoutes(
     // and reporting "that token was already dead" is an oracle.
     return reply.code(204).send();
   });
+}
+
+function secretsMatch(expected: string, provided: string): boolean {
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 function sendDomainError(

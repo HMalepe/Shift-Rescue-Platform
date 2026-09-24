@@ -229,6 +229,35 @@ export async function bootstrapFirstAdmin(
 }
 
 /**
+ * Writes the Vercel admin password onto the admin that already exists.
+ * Setup is one-shot, so a later change to ADMIN_PASSWORD would otherwise
+ * never reach the account.
+ */
+export async function setAdminPassword(
+  db: Database,
+  input: { readonly email: string; readonly password: string },
+): Promise<{ email: string }> {
+  const email = input.email.trim().toLowerCase();
+  const [user] = await db
+    .select({ id: users.id, email: users.email, role: users.role })
+    .from(users)
+    .where(sql`lower(${users.email}) = ${email}`)
+    .limit(1);
+
+  if (!user || user.role !== "admin") {
+    throw new DomainError("ADMIN_NOT_FOUND", "No admin account uses that email");
+  }
+
+  await changePassword(db, user.id, input.password);
+  await db
+    .update(users)
+    .set({ mfaSecret: null, mfaEnrolledAt: null, mfaLastUsedCounter: null })
+    .where(eq(users.id, user.id));
+
+  return { email: user.email };
+}
+
+/**
  * §12.1 — authentication.
  *
  * Three requirements from the spec drive the shape of this file:

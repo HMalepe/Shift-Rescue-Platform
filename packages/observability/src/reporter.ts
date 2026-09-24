@@ -94,6 +94,8 @@ const ROUTINE_DOMAIN_CODES: ReadonlySet<string> = new Set([
   "SUBSCRIPTION_NOT_FOUND",
   "SUBSCRIPTION_CANCELLED",
   "CHARGE_NOT_FOUND",
+  "ADMIN_EXISTS",
+  "ADMIN_NOT_FOUND",
 ]);
 
 /**

@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { fetchSetupStatus } from "@/lib/api";
 import { readAdminEnv } from "@/lib/admin-env";
-import { SetupForm } from "./setup-form";
+import { PasswordForm } from "./setup-form";
 
 export default async function SetupPage() {
   const admin = readAdminEnv();
@@ -16,19 +15,21 @@ export default async function SetupPage() {
           <code>ADMIN_EMAIL</code> and <code>ADMIN_PASSWORD</code>. Redeploy, then
           come back here.
         </p>
-      ) : !available ? (
-        <p className="lede">
-          Admin setup is closed. <Link href="/login">Sign in</Link> with{" "}
-          <strong>{admin.email}</strong> or{" "}
-          <Link href="/register">create a locum or pharmacy account</Link>.
-        </p>
-      ) : (
+      ) : available ? (
         <>
           <p className="lede">
             One account, once. After this, sign in with the email and password from
             Vercel.
           </p>
-          <SetupForm email={admin.email} />
+          <PasswordForm email={admin.email} mode="create" />
+        </>
+      ) : (
+        <>
+          <p className="lede">
+            <strong>{admin.email}</strong> already exists. This sets its sign-in
+            password to the <code>ADMIN_PASSWORD</code> currently on Vercel.
+          </p>
+          <PasswordForm email={admin.email} mode="reset" />
         </>
       )}
     </main>
