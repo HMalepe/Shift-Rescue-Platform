@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { api, ApiError } from "@/lib/api";
@@ -88,7 +89,8 @@ export default async function BrowsePage({
               sides' time.
             */}
             Your registration is <strong>{status.verification}</strong>. Pharmacies can
-            only confirm verified locums.
+            only confirm verified locums.{" "}
+            <Link href="/profile">Finish your profile</Link> so an admin can check it.
           </p>
         ) : null}
 

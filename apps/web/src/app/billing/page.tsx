@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { requireRole } from "@/lib/guard";
@@ -75,8 +76,8 @@ export default async function BillingPage({
 
         {pharmacies.length === 0 ? (
           <p className="empty">
-            Your account is not linked to a pharmacy yet. An administrator needs to add
-            you before you can subscribe.
+            Your account is not linked to a pharmacy yet. Add it on your{" "}
+            <Link href="/profile">Profile</Link> page before you subscribe.
           </p>
         ) : (
           pharmacies.map((pharmacy) => (

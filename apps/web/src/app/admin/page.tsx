@@ -3,5 +3,5 @@ import { requireRole } from "@/lib/guard";
 
 export default async function AdminHome() {
   await requireRole("admin");
-  redirect("/admin/verification");
+  redirect("/admin/accounts");
 }

@@ -9,6 +9,7 @@ import { BILLING_ENABLED } from "@/lib/billing";
 
 const NAV: Record<Role, ReadonlyArray<{ href: string; label: string }>> = {
   manager: [
+    { href: "/profile", label: "Profile" },
     { href: "/shifts", label: "Shifts" },
     { href: "/shifts/new", label: "Post a shift" },
     // Phase 1 charges nobody — see lib/billing.ts. Nothing links to /billing
@@ -16,10 +17,12 @@ const NAV: Record<Role, ReadonlyArray<{ href: string; label: string }>> = {
     ...(BILLING_ENABLED ? [{ href: "/billing", label: "Billing" }] : []),
   ],
   locum: [
+    { href: "/profile", label: "Profile" },
     { href: "/browse", label: "Find shifts" },
     { href: "/bookings", label: "My bookings" },
   ],
   admin: [
+    { href: "/admin/accounts", label: "Accounts" },
     { href: "/admin/dashboard", label: "Operations" },
     { href: "/admin/verification", label: "Verification" },
     { href: "/admin/flagged", label: "Flagged messages" },
