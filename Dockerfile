@@ -26,13 +26,18 @@
 # into the runtime image, because neither app had a build step and starting
 # from `tsx src/main.ts` was the only option. That tradeoff is resolved now:
 # apps/api and apps/worker each bundle to a single dist/main.js via
-# scripts/build-node-app.mjs (esbuild, Node 22 target, ESM), and this
-# Dockerfile is a genuine multi-stage build — `deps` and `build` see the full
-# devDependency tree, `prod-deps` installs production dependencies ONLY for
-# `@locum/api`/`@locum/worker` and their transitive graph, and `runtime`
-# copies just that plus the two dist/main.js files. tsx, typescript, vitest
-# and esbuild itself never reach the shipped image; neither does any `src/`
-# tree — the bundle is self-contained.
+# scripts/build-node-app.mjs (esbuild, Node 22 target, ESM); `@locum/db`
+# bundles the same way to dist/migrate.js, since railway.json's own
+# `deploy.preDeployCommand` runs `pnpm --filter @locum/db migrate` against
+# this image, not just the two apps' `start`. This Dockerfile is a genuine
+# multi-stage build — `deps` and `build` see the full devDependency tree,
+# `prod-deps` installs production dependencies ONLY for `@locum/api`,
+# `@locum/worker`, `@locum/db` and their transitive graph, and `runtime`
+# copies just that plus the three dist/*.js entrypoints (plus
+# packages/db/migrations, which is data read by name at migrate time, not
+# compiled). tsx, typescript, vitest and esbuild itself never reach the
+# shipped image; neither does any `src/` tree — the bundles are
+# self-contained.
 #
 # Native modules — the one way this class of change breaks in a way `docker
 # build` succeeding does not catch — are never bundled. See
@@ -103,7 +108,13 @@ COPY packages/observability packages/observability
 # each app's own build script in isolation — but "currently" is the
 # operative word, and turbo is what keeps that true if that ever changes
 # without anyone having to remember why.
-RUN pnpm exec turbo run build --filter=@locum/api --filter=@locum/worker
+#
+# @locum/db is included here too: railway.json's `deploy.preDeployCommand`
+# runs `pnpm --filter @locum/db migrate` against the runtime image, same as
+# apps/api and apps/worker's own start commands — it needs the same compiled
+# path, not `tsx src/migrate.ts`, or it fails the moment tsx and src/ stop
+# shipping to that image.
+RUN pnpm exec turbo run build --filter=@locum/api --filter=@locum/worker --filter=@locum/db
 
 # --- prod-deps: a production-only install, scoped to api + worker -----------
 
@@ -126,13 +137,17 @@ COPY tools/devdata/package.json tools/devdata/
 
 # `--prod` drops every devDependency across the whole resolved tree —
 # typescript, tsx, vitest, esbuild, drizzle-kit, eslint, all of it — and
-# `--filter=...` scopes the install to `@locum/api`/`@locum/worker` and
-# whatever they actually depend on, rather than also installing Next.js and
-# the mobile app's dependencies into an image that runs neither. This is the
-# entire size/attack-surface reduction the Dockerfile's own header used to
-# apologise for not having done.
+# `--filter=...` scopes the install to `@locum/api`/`@locum/worker`/`@locum/db`
+# and whatever they actually depend on, rather than also installing Next.js
+# and the mobile app's dependencies into an image that runs neither. This is
+# the entire size/attack-surface reduction the Dockerfile's own header used
+# to apologise for not having done.
+#
+# `@locum/db` is included because railway.json's `deploy.preDeployCommand`
+# runs its `migrate` script against this same runtime image, not just
+# apps/api and apps/worker's own `start`.
 RUN PNPM_HOME=/pnpm pnpm install --prod --frozen-lockfile \
-    --filter=@locum/api... --filter=@locum/worker...
+    --filter=@locum/api... --filter=@locum/worker... --filter=@locum/db...
 
 # --- runtime -------------------------------------------------------------
 
@@ -153,12 +168,15 @@ RUN apt-get update \
 WORKDIR /app
 
 # Manifests only — no package's `src/` reaches this stage at all, compiled or
-# not. `pnpm --filter @locum/api start` (what railway.json's
-# `deploy.startCommand` and infra/compute.tf's ECS `command` both actually
-# invoke) still needs the full workspace graph to resolve the filter, even
-# though the two apps it can target no longer need anything else from their
-# workspace siblings — see the header comment on why a bundled dist/main.js
-# has nothing left to import from `@locum/core` et al. by name.
+# not (packages/db/migrations is the one exception, copied below — it is
+# data, not source). `pnpm --filter @locum/api start` and `pnpm --filter
+# @locum/db migrate` (what railway.json's `deploy.startCommand` /
+# `deploy.preDeployCommand`, and infra/compute.tf's ECS `command`, actually
+# invoke) still need the full workspace graph to resolve the filter, even
+# though none of the three packages they can target need anything else from
+# their workspace siblings — see the header comment on why a bundled
+# dist/main.js or dist/migrate.js has nothing left to import from
+# `@locum/core` et al. by name.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/worker/package.json apps/worker/
@@ -176,12 +194,23 @@ COPY tools/devdata/package.json tools/devdata/
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=prod-deps /app/apps/worker/node_modules ./apps/worker/node_modules
+COPY --from=prod-deps /app/packages/db/node_modules ./packages/db/node_modules
 
 # The compiled bundles. Each is a single file (plus a sourcemap, kept for
 # readable stack traces in error reports) — everything from
-# packages/core/db/integrations/observability is already inlined into it.
+# packages/core/db/integrations/observability is already inlined into
+# apps/api's and apps/worker's own bundle. packages/db/dist/migrate.js is
+# separate: it is what railway.json's `deploy.preDeployCommand` runs
+# directly (`pnpm --filter @locum/db migrate`), so it needs to exist here in
+# its own right, not just inlined into someone else's bundle.
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/worker/dist apps/worker/dist
+COPY --from=build /app/packages/db/dist packages/db/dist
+
+# Not compiled — read from disk at migration time by name (drizzle's
+# migrator walks this directory for both the .sql files and its own
+# meta/_journal.json), so it ships as data, the same way it always did.
+COPY packages/db/migrations packages/db/migrations
 
 # Non-root. The node image ships a `node` user; the application never needs to
 # write to its own directory, so ownership stays with root and the process

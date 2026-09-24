@@ -11,7 +11,8 @@
   "scripts": {
     "generate": "drizzle-kit generate && tsx scripts/postprocess-migration.ts",
     "postprocess": "tsx scripts/postprocess-migration.ts",
-    "migrate": "tsx src/migrate.ts",
+    "build": "node ../../scripts/build-node-app.mjs src/migrate.ts dist/migrate.js",
+    "migrate": "node dist/migrate.js",
     "seed": "tsx src/seed/run.ts",
     "gates": "tsx scripts/record-gates.ts",
     "typecheck": "tsc --noEmit",
