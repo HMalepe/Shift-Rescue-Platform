@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import {
   cancellationFees,
   subscriptionCharges,
@@ -495,7 +495,18 @@ async function markSucceeded(
   });
 }
 
-/** The worker entry point: everything whose retry is due. */
+/**
+ * The worker entry point: everything whose retry is due.
+ *
+ * Pages rather than taking one snapshot, same reasoning as
+ * `rolloverDuePeriods` below: an unordered `limit(limit)` over a backlog
+ * bigger than `limit` silently drops whichever rows Postgres didn't
+ * happen to return, with nothing forcing a second look at the rest.
+ * `attemptCharge` always moves a processed charge's status or
+ * `next_retry_at` out of this query's match set (settled, failed, or
+ * rescheduled into the future), so paging until a page comes back short
+ * is guaranteed to terminate and drains the whole backlog in one call.
+ */
 export async function processDueCharges(
   db: Database,
   deps: DunningDeps,
@@ -503,31 +514,41 @@ export async function processDueCharges(
 ): Promise<ChargeAttemptResult[]> {
   const now = deps.now?.() ?? new Date();
 
-  const due = await db
-    .select({ id: subscriptionCharges.id })
-    .from(subscriptionCharges)
-    .where(
-      /*
-       * `pending` means "never attempted" and `openPeriodCharge` never sets
-       * `next_retry_at` on insert — it stays NULL. `lte(nextRetryAt, now)`
-       * over the whole set used to be applied to BOTH statuses, and in SQL
-       * `NULL <= now` is NULL, which the WHERE clause treats as false. A
-       * freshly opened charge was therefore invisible to this query forever,
-       * found only by manually setting next_retry_at, which is exactly what
-       * every existing test did instead of exercising the real path. A
-       * `pending` charge is due unconditionally; only `retrying` respects
-       * the scheduled retry time.
-       */
-      or(
-        eq(subscriptionCharges.status, "pending"),
-        and(eq(subscriptionCharges.status, "retrying"), lte(subscriptionCharges.nextRetryAt, now)),
-      ),
-    )
-    .limit(limit);
-
   const results: ChargeAttemptResult[] = [];
-  for (const charge of due) {
-    results.push(await attemptCharge(db, deps, charge.id));
+  for (;;) {
+    const due = await db
+      .select({ id: subscriptionCharges.id })
+      .from(subscriptionCharges)
+      .where(
+        /*
+         * `pending` means "never attempted" and `openPeriodCharge` never sets
+         * `next_retry_at` on insert — it stays NULL. `lte(nextRetryAt, now)`
+         * over the whole set used to be applied to BOTH statuses, and in SQL
+         * `NULL <= now` is NULL, which the WHERE clause treats as false. A
+         * freshly opened charge was therefore invisible to this query forever,
+         * found only by manually setting next_retry_at, which is exactly what
+         * every existing test did instead of exercising the real path. A
+         * `pending` charge is due unconditionally; only `retrying` respects
+         * the scheduled retry time.
+         */
+        or(
+          eq(subscriptionCharges.status, "pending"),
+          and(eq(subscriptionCharges.status, "retrying"), lte(subscriptionCharges.nextRetryAt, now)),
+        ),
+      )
+      // Postgres sorts NULLs first ascending, so never-attempted (`pending`,
+      // `next_retry_at` NULL) charges take priority over scheduled retries,
+      // which then run soonest-due first.
+      .orderBy(asc(subscriptionCharges.nextRetryAt))
+      .limit(limit);
+
+    if (due.length === 0) break;
+
+    for (const charge of due) {
+      results.push(await attemptCharge(db, deps, charge.id));
+    }
+
+    if (due.length < limit) break;
   }
   return results;
 }
@@ -554,6 +575,19 @@ const DEFAULT_PERIOD_LENGTH_MS = 30 * 86_400_000;
  * let two billing cycles run at once. It waits for dunning to resolve the
  * old one first — see `openPeriodCharge`'s `advancePeriod` branch, which
  * re-checks this with a row lock rather than trusting this query's snapshot.
+ *
+ * `limit` pages the query rather than capping the run: the first version
+ * took a single unordered `limit(100)` snapshot, which silently dropped
+ * whichever subscriptions Postgres didn't happen to return that tick — with
+ * no `ORDER BY`, that's not even "oldest wins", it's arbitrary. A due
+ * backlog past `limit` (the §14 seed alone ships ~130 pre-due subscriptions)
+ * could starve indefinitely: nothing ever forced a second look at whatever
+ * got left out. Now each page is ordered oldest-due-first and, since a
+ * processed subscription's `current_period_end` moves into the future (or
+ * its status moves off `active`), it always drops out of the next page's
+ * `WHERE` — so the loop is guaranteed to terminate, and a backlog bigger
+ * than `limit` still gets fully drained in one call instead of leaking one
+ * tick's worth of rows forever.
  */
 export async function rolloverDuePeriods(
   db: Database,
@@ -567,24 +601,33 @@ export async function rolloverDuePeriods(
   const periodLengthMs = opts.periodLengthMs ?? DEFAULT_PERIOD_LENGTH_MS;
   const limit = opts.limit ?? 100;
 
-  const due = await db
-    .select({ id: subscriptions.id, periodEnd: subscriptions.currentPeriodEnd })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.status, "active"), lte(subscriptions.currentPeriodEnd, now)))
-    .limit(limit);
-
   const results: Array<{ subscriptionId: string } & OpenedCharge> = [];
-  for (const sub of due) {
-    const opened = await openPeriodCharge(db, sub.id, {
-      advancePeriod: {
-        start: sub.periodEnd,
-        end: new Date(sub.periodEnd.getTime() + periodLengthMs),
-      },
-    });
-    // `null` means the status check inside the transaction lost the race —
-    // dunning moved this subscription off `active` between this query and
-    // that lock. Not an error; the next tick picks it up once resolved.
-    if (opened) results.push({ subscriptionId: sub.id, ...opened });
+  for (;;) {
+    const due = await db
+      .select({ id: subscriptions.id, periodEnd: subscriptions.currentPeriodEnd })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.status, "active"), lte(subscriptions.currentPeriodEnd, now)))
+      .orderBy(asc(subscriptions.currentPeriodEnd))
+      .limit(limit);
+
+    if (due.length === 0) break;
+
+    for (const sub of due) {
+      const opened = await openPeriodCharge(db, sub.id, {
+        advancePeriod: {
+          start: sub.periodEnd,
+          end: new Date(sub.periodEnd.getTime() + periodLengthMs),
+        },
+      });
+      // `null` means the status check inside the transaction lost the race —
+      // dunning moved this subscription off `active` between this query and
+      // that lock. Not an error; it has already left the `active` state this
+      // query selects on, so the next page (or the next call) does not see
+      // it again — the next tick picks it up once dunning resolves it.
+      if (opened) results.push({ subscriptionId: sub.id, ...opened });
+    }
+
+    if (due.length < limit) break;
   }
   return results;
 }
