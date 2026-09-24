@@ -17,6 +17,16 @@ interface PendingDocument {
   sapcNumber: string | null;
 }
 
+interface PendingLocum {
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  sapcNumber: string | null;
+  verification: string;
+  maxTravelKm: number;
+}
+
 interface PendingPharmacy {
   pharmacyId: string;
   name: string;
@@ -49,8 +59,9 @@ export default async function VerificationQueuePage({
   searchParams: Promise<{ error?: string; url?: string }>;
 }) {
   const viewer = await requireRole("admin");
-  const [pending, pendingPharmacies, { error, url }] = await Promise.all([
+  const [pending, pendingLocums, pendingPharmacies, { error, url }] = await Promise.all([
     api.query<PendingDocument[]>("verification.queue", { limit: 50 }),
+    api.query<PendingLocum[]>("verification.queueLocums", { limit: 50 }),
     api.query<PendingPharmacy[]>("verification.queuePharmacies", { limit: 50 }),
     searchParams,
   ]);
@@ -102,6 +113,35 @@ export default async function VerificationQueuePage({
     revalidatePath("/admin/verification");
   }
 
+  async function reviewLocum(formData: FormData) {
+    "use server";
+    const userId = String(formData.get("userId") ?? "");
+    const decision = String(formData.get("decision") ?? "");
+    const reason = String(formData.get("reason") ?? "").trim();
+
+    if (decision === "rejected" && reason === "") {
+      redirect(
+        `/admin/verification?error=${encodeURIComponent(
+          "A rejection needs a reason — the locum has to know what to fix.",
+        )}`,
+      );
+    }
+
+    try {
+      await api.mutate("verification.reviewLocum", {
+        userId,
+        decision,
+        ...(reason !== "" && { reason }),
+      });
+    } catch (caught) {
+      const message =
+        caught instanceof ApiError ? caught.message : "Could not record the decision";
+      redirect(`/admin/verification?error=${encodeURIComponent(message)}`);
+    }
+
+    revalidatePath("/admin/verification");
+  }
+
   async function reviewPharmacy(formData: FormData) {
     "use server";
     const pharmacyId = String(formData.get("pharmacyId") ?? "");
@@ -136,6 +176,60 @@ export default async function VerificationQueuePage({
       <Masthead role={viewer.role} />
       <main className="shell">
         <h1>Verification queue</h1>
+
+        <h2>Locums</h2>
+        <p className="lede" style={{ marginBottom: "1rem" }}>
+          {pendingLocums.length === 0
+            ? "No locums waiting for an SAPC check."
+            : `${pendingLocums.length} locum${pendingLocums.length === 1 ? "" : "s"} waiting for an SAPC check.`}{" "}
+          Checked against the registration number on their profile.
+        </p>
+        {pendingLocums.length === 0 ? (
+          <p className="empty">Nothing waiting for review.</p>
+        ) : (
+          <div className="stack">
+            {pendingLocums.map((locum) => (
+              <article key={locum.userId} className="card">
+                <div className="row">
+                  <strong>{locum.fullName}</strong>
+                  <span className={badgeToneFor(locum.verification)}>{locum.verification}</span>
+                </div>
+                <p className="dim" style={{ margin: "0.3rem 0 0" }}>
+                  {locum.email}
+                  {locum.phone ? ` · ${locum.phone}` : ""}
+                </p>
+                <p style={{ margin: "0.4rem 0 0" }}>
+                  SAPC registration number:{" "}
+                  <strong className="mono">{locum.sapcNumber ?? "—"}</strong>
+                </p>
+                <form action={reviewLocum} style={{ marginTop: "1rem" }}>
+                  <input type="hidden" name="userId" value={locum.userId} />
+                  <div className="field">
+                    <label htmlFor={`locum-reason-${locum.userId}`}>
+                      Reason (required to reject)
+                    </label>
+                    <input
+                      id={`locum-reason-${locum.userId}`}
+                      name="reason"
+                      maxLength={500}
+                      placeholder="Name does not match the SAPC register…"
+                    />
+                  </div>
+                  <div className="row" style={{ gap: "0.5rem" }}>
+                    <button type="submit" name="decision" value="verified" className="primary">
+                      Verify
+                    </button>
+                    <button type="submit" name="decision" value="rejected">
+                      Reject
+                    </button>
+                  </div>
+                </form>
+              </article>
+            ))}
+          </div>
+        )}
+
+        <h2 style={{ marginTop: "2.5rem" }}>Documents</h2>
         <p className="lede">
           {pending.length === 0
             ? "Documents that passed their security scan and are waiting on a human."

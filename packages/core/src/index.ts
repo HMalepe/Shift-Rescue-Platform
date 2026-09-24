@@ -14,3 +14,4 @@ export * from "./ratelimit/index";
 export * from "./matching/index";
 export * from "./pharmacy-areas";
 export * from "./pharmacy-verification";
+export * from "./locum-verification";

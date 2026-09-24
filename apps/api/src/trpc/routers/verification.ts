@@ -4,9 +4,11 @@ import { eq } from "drizzle-orm";
 import { documents, locumProfiles } from "@locum/db";
 import {
   createSignedUrl,
+  listPendingLocums,
   listPendingPharmacies,
   listPendingReview,
   reviewDocument,
+  reviewLocum,
   reviewPharmacy,
   uploadDocument,
   verificationHistory,
@@ -99,6 +101,7 @@ export const verificationRouter = router({
         verification: locumProfiles.verification,
         verifiedAt: locumProfiles.verifiedAt,
         sapcNumber: locumProfiles.sapcNumber,
+        maxTravelKm: locumProfiles.maxTravelKm,
       })
       .from(locumProfiles)
       .where(eq(locumProfiles.userId, ctx.user.id))
@@ -164,6 +167,28 @@ export const verificationRouter = router({
   history: adminProcedure
     .input(z.object({ userId: z.string().uuid() }))
     .query(async ({ ctx, input }) => verificationHistory(ctx.db, input.userId)),
+
+  /** Locums who are not yet verified, including those who never uploaded a document. */
+  queueLocums: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }))
+    .query(async ({ ctx, input }) => listPendingLocums(ctx.db, input.limit)),
+
+  reviewLocum: adminProcedure
+    .input(
+      z.object({
+        userId: z.string().uuid(),
+        decision: z.enum(["verified", "rejected"]),
+        reason: z.string().max(500).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) =>
+      reviewLocum(ctx.db, {
+        userId: input.userId,
+        adminId: ctx.user.id,
+        decision: input.decision,
+        ...(input.reason !== undefined && { reason: input.reason }),
+      }),
+    ),
 
   /**
    * §2's pharmacy SAPC number, checked directly rather than through a

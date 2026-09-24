@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { locumProfiles, pharmacies, pharmacyMembers, users } from "@locum/db";
-import { claimRegistrationNumber } from "@locum/core";
+import { claimRegistrationNumber, findPharmacyArea } from "@locum/core";
 import { router, locumProcedure, managerProcedure, protectedProcedure } from "../trpc";
 
 const coordinate = z.object({
@@ -107,13 +107,31 @@ export const profileRouter = router({
       z.object({
         /** Home base for proximity matching — NOT live device location (§8). */
         baseLocation: coordinate.optional(),
+        /** Named area from the same list as pharmacy registration. */
+        area: z.string().trim().min(1).max(80).optional(),
         maxTravelKm: z.number().int().min(1).max(200).optional(),
-        sapcNumber: z.string().trim().max(32).optional(),
+        sapcNumber: z.string().trim().min(4).max(32).optional(),
+        /** Moves an unfinished profile onto the admin verification queue. */
+        submitForReview: z.boolean().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      let areaLocation: { lng: number; lat: number } | undefined;
+      if (input.area !== undefined) {
+        const area = findPharmacyArea(input.area);
+        if (!area) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Select a valid area" });
+        }
+        areaLocation = { lng: area.lng, lat: area.lat };
+      }
+      const baseLocation = input.baseLocation ?? areaLocation;
+
       const [existing] = await ctx.db
-        .select({ verification: locumProfiles.verification })
+        .select({
+          verification: locumProfiles.verification,
+          sapcNumber: locumProfiles.sapcNumber,
+          baseLocation: locumProfiles.baseLocation,
+        })
         .from(locumProfiles)
         .where(eq(locumProfiles.userId, ctx.user.id))
         .limit(1);
@@ -147,17 +165,29 @@ export const profileRouter = router({
          * credentials.
          */
         const resetsVerification =
-          input.sapcNumber !== undefined &&
           sapcNumber !== undefined &&
+          sapcNumber !== (existing.sapcNumber ?? "").toUpperCase() &&
           existing.verification === "verified";
+
+        const hasSapc = (sapcNumber ?? existing.sapcNumber ?? "").trim() !== "";
+        const hasLocation = baseLocation !== undefined || existing.baseLocation != null;
+        if (input.submitForReview === true && (!hasSapc || !hasLocation)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Add your SAPC registration number and home area, then save.",
+          });
+        }
+        const markReady =
+          input.submitForReview === true &&
+          (existing.verification !== "verified" || resetsVerification);
 
         await tx
           .update(locumProfiles)
           .set({
-            ...(input.baseLocation !== undefined && { baseLocation: input.baseLocation }),
+            ...(baseLocation !== undefined && { baseLocation }),
             ...(input.maxTravelKm !== undefined && { maxTravelKm: input.maxTravelKm }),
             ...(sapcNumber !== undefined && { sapcNumber }),
-            ...(resetsVerification && {
+            ...((resetsVerification || markReady) && {
               verification: "complete_unverified" as const,
               verifiedAt: null,
               verifiedBy: null,
@@ -214,6 +244,7 @@ export const profileRouter = router({
         postalCode: pharmacies.postalCode,
         location: pharmacies.location,
         verification: pharmacies.verification,
+        sapcPharmacyNumber: pharmacies.sapcPharmacyNumber,
         isPrimary: pharmacyMembers.isPrimary,
       })
       .from(pharmacyMembers)
@@ -231,6 +262,7 @@ export const profileRouter = router({
         suburb: z.string().trim().max(120).optional(),
         city: z.string().trim().max(120).optional(),
         postalCode: z.string().trim().max(10).optional(),
+        area: z.string().trim().min(1).max(80).optional(),
         /**
          * Moving the pharmacy moves where its shifts are matched from. Existing
          * shifts keep their own denormalised location deliberately — a shift
@@ -258,6 +290,18 @@ export const profileRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Pharmacy not found" });
       }
 
+      let areaLocation: { lng: number; lat: number } | undefined;
+      let areaCity: string | undefined;
+      if (input.area !== undefined) {
+        const area = findPharmacyArea(input.area);
+        if (!area) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Select a valid area" });
+        }
+        areaLocation = { lng: area.lng, lat: area.lat };
+        areaCity = area.city;
+      }
+      const location = input.location ?? areaLocation;
+
       await ctx.db
         .update(pharmacies)
         .set({
@@ -265,9 +309,10 @@ export const profileRouter = router({
           ...(input.tradingName !== undefined && { tradingName: input.tradingName }),
           ...(input.addressLine !== undefined && { addressLine: input.addressLine }),
           ...(input.suburb !== undefined && { suburb: input.suburb }),
+          ...(areaCity !== undefined && input.city === undefined && { city: areaCity }),
           ...(input.city !== undefined && { city: input.city }),
           ...(input.postalCode !== undefined && { postalCode: input.postalCode }),
-          ...(input.location !== undefined && { location: input.location }),
+          ...(location !== undefined && { location }),
           updatedAt: new Date(),
         })
         .where(eq(pharmacies.id, input.pharmacyId));
