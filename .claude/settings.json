@@ -1,0 +1,13 @@
+{
+  "extraKnownMarketplaces": {
+    "holiday-ai-os": {
+      "source": {
+        "source": "github",
+        "repo": "HMalepe/holiday-ai-operating-system"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "holiday-os@holiday-ai-os": true
+  }
+}
